@@ -104,8 +104,8 @@ gfs commit
 # This will send emails and move them from /outbox to /send after success
 ```
 
-Emails are usually immutable, but from a technically nothing prevents an email provider from changing email content.
-For email, pull will fetch new emails, delete locally emails deleted on remote, or move emails between folders.
+Emails are usually immutable, but technically nothing prevents an email provider from changing email content.
+For email, `gfs pull` will fetch new emails, delete locally emails deleted on remote, or move emails between folders.
 
 ```shell
 gfs pull # can be called to fetch new emails or, if emails were rearranged in a folder, update them
@@ -132,8 +132,11 @@ I thought putting an email in the /draft folder and `gfs commit` would send the 
 how do we represent putting an email in the /draft folder (without sending)?
 
 Alternatively, a new command could be added. If an email is in the /draft folder (committed or not), for example:
+
 `gfs create /draft/new-email.md` # some general method (create=send)
+
 `gfs command smtp create /draft/new-email.md` # or maybe every integration could have special commands?
+
 `gfs smtp:create /draft/new-email.md` # alternative
 
 Another alternative would be the creation of a file in the existing sent folder `/sent/some-email.md` — and commit — but the problem is it is hard to differentiate if we want to move the email to the /sent folder without sending,
