@@ -15,6 +15,7 @@ import (
 type Env struct {
 	Tree    *workdir.Tree
 	Index   *workdir.Index
+	Atts    *workdir.Attachments // fetched attachments; saved after every change
 	Adapter adapter.Adapter
 	Session adapter.Session
 	Out     io.Writer
@@ -52,6 +53,9 @@ func (e *Env) StoreBase(res *adapter.Resource, oldPath string) error {
 }
 
 func (e *Env) Forget(id, path string) error {
+	if err := e.dropAttachments(id); err != nil {
+		return err
+	}
 	if e.Tree.Exists(path) {
 		if err := e.Tree.Remove(path); err != nil {
 			return err

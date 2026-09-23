@@ -21,7 +21,7 @@ func Clone(ctx context.Context, ad adapter.Adapter, sess adapter.Session, rawURL
 	if err != nil {
 		return nil, err
 	}
-	env := &Env{Tree: t, Index: ix, Adapter: ad, Session: sess, Out: out, Now: time.Now}
+	env := &Env{Tree: t, Index: ix, Atts: workdir.NewAttachments(), Adapter: ad, Session: sess, Out: out, Now: time.Now}
 	l, err := sess.List(ctx, "")
 	if err != nil {
 		return nil, err

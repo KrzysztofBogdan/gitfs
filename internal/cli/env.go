@@ -52,6 +52,10 @@ func openEnv(cmd *cobra.Command, lock bool) (*engine.Env, string, func(), error)
 	if err != nil {
 		return nil, "", nil, err
 	}
+	atts, err := t.LoadAttachments()
+	if err != nil {
+		return nil, "", nil, err
+	}
 	unlock := func() {}
 	if lock {
 		if unlock, err = t.Lock(); err != nil {
@@ -63,7 +67,7 @@ func openEnv(cmd *cobra.Command, lock bool) (*engine.Env, string, func(), error)
 		unlock()
 		return nil, "", nil, err
 	}
-	env := &engine.Env{Tree: t, Index: ix, Adapter: ad, Session: sess, Out: cmd.OutOrStdout(), Prompt: prompter(), Now: time.Now}
+	env := &engine.Env{Tree: t, Index: ix, Atts: atts, Adapter: ad, Session: sess, Out: cmd.OutOrStdout(), Prompt: prompter(), Now: time.Now}
 	return env, raw, func() { sess.Close(); unlock() }, nil
 }
 
