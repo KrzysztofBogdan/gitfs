@@ -93,9 +93,12 @@ The file name is derived from the element:
    the extension: `scan.pdf`, `scan (2).pdf`.
 
 The derived path is used for `gfs get` arguments, for status output and for
-downloads. Once fetched, the actual path is stored in `.gfs/attachments` and
-is authoritative, so a later change in id order or name never repoints a
-fetched file silently (a remote rename is an explicit move, 5.2).
+downloads. The tracked line stores where the file is now; whenever a pull or
+commit of the resource finds the derived path changed (remote rename, a
+de-duplication number shifting after a delete, the resource moving), the
+file is moved to the new derived path and the line follows. Identity is the
+attachment `id`, so a move never repoints bytes to another attachment. A
+target path occupied by an untracked file blocks the move and is reported.
 
 Reserved suffix: a resource whose derived file name would end in `.files`
 before `.xml` gets `_` appended (`Foo.files_.xml`), so its sidecar can never
@@ -116,7 +119,9 @@ One line per fetched attachment, tab-separated, sorted by path:
   base bytes is kept.
 * `mtime`: the file's mtime (Unix nanoseconds) when it was last synced. A
   file whose size and mtime both match is unchanged without hashing it; any
-  mismatch triggers a hash.
+  mismatch triggers a hash. A file younger than 2 seconds when the line is
+  written gets `mtime` 0 (always hash), so an edit within the same clock tick
+  as the download is never missed.
 * `version` is `-` for services without versions.
 * `path` is last so it may contain spaces; a path containing a tab or newline is refused.
 
@@ -136,7 +141,7 @@ For each attachment element of a resource, and each file in its sidecar:
 | yes | yes | yes | hash ≠ line, element version = line version | changed locally | `M` update |
 | yes | yes | yes | hash = line, element version ≠ line version | changed on remote | silent; `pull` refreshes |
 | yes | yes | yes | hash ≠ line, element version ≠ line version | both changed | `C` |
-| yes | yes | no | | evicted | silent; the line is dropped by the next command that takes the lock |
+| yes | yes | no | | evicted | silent; the line is dropped by the next pull or commit of the resource |
 | no | any | any | element was in base | removed locally | `D` delete [ask] |
 | no | no | yes | | new file | `A` create |
 | no | yes | yes | element not in base either (removed on remote) | deleted on remote, changed locally | `C` deleted on remote |
@@ -396,7 +401,7 @@ unique per page, so de-duplication never applies.
 * **Paths**: derivation, sanitising, `.files` suffix escaping, duplicate
   names in id order (mail-shaped fixture), prefix attribute.
 * **Tracking file**: parse and print, size+mtime fast path (a touched file
-  with equal bytes is clean after hashing and its mtime is refreshed).
+  with equal bytes is clean after hashing; a fresh file's line has mtime 0).
 * **State table 3.4**: one table test per row, through `changes.Compute`,
   using the fake adapter extended with attachments.
 * **Commit**: upload new, update changed, delete by removed element (fetched
