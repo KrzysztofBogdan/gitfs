@@ -46,6 +46,11 @@ current directory; no path means the whole tree.
 | `gfs actions` | Verbs the remote understands and their policy. |
 | `gfs get <path>...` | Download attachment bytes on demand (a file, a page, or a directory). |
 | `gfs auth ...` | Manage stored API tokens (see below). |
+| `gfs example <adapter> [<node>[/<variant>]]` | List or print body examples verified against the service. |
+| `gfs schema <adapter>` | Print a RELAX NG schema for the adapter's files (`xmllint --relaxng`). |
+
+Built-in docs: `gfs help start` (this page), `gfs help confluence`,
+`gfs help confluence-storage`.
 
 ### commit flags
 
@@ -72,7 +77,9 @@ current directory; no path means the whole tree.
 | `!` | last commit failed; details in the file's `<errors>` element |
 | `C` | unresolved conflict; the file has `<conflict/>` and merge markers |
 
-`[ask]` or `[deny]` after an action shows its policy.
+`[ask]` or `[deny]` after an action shows its policy. A `warning:` line under a
+file means the edit uses content the service is not known to store unchanged;
+it does not block the commit.
 
 ## Files
 

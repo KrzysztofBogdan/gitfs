@@ -124,6 +124,31 @@ Useful building blocks:
 If the body uses `ac:` or `ri:`, keep the `xmlns:ac` and `xmlns:ri`
 declarations on `<body>` as shown above.
 
+### Storage reference
+
+Well-formed storage is not enough: Confluence silently drops forms it does not
+accept. gfs carries a reference of forms verified against Confluence Cloud:
+
+```shell
+gfs help confluence-storage             # every node and variant, with status
+gfs example confluence                  # list nodes and variants
+gfs example confluence panel            # all panel variants
+gfs example confluence panel/info       # one fragment, ready to paste
+gfs schema confluence > storage.rng     # RELAX NG for a whole page file
+xmllint --noout --relaxng storage.rng "eng/Home/Architecture.xml"
+```
+
+`gfs status` and `gfs commit` warn when an edit introduces something outside
+the verified set, and say so explicitly when Confluence is known to drop it:
+
+```text
+  M  eng/Home.xml                             update body
+        warning: <span data-highlight-colour>: Confluence drops this; for a text highlight write <span style="background-color: rgb(…)"> (see marks/background-color)
+```
+
+Warnings never block a commit. Forms already on the page before your edit do
+not warn.
+
 ## What each change does
 
 | you do | status | commit does |
@@ -213,3 +238,6 @@ gfs commit
 * Page restrictions, watchers, blog posts, whiteboards, databases.
 * Moving a page to the space root.
 * Renaming an attachment.
+* Wide or full-width code blocks and expands, and a table's numbered first
+  column: Confluence drops these settings when they come through storage
+  format (set them in the editor; gfs keeps whatever Confluence stores).
