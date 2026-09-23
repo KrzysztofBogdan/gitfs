@@ -1,5 +1,6 @@
-# Introduction
 (Warning: This is written by human but added em dashes so you will never be sure).
+
+# Background
 
 AI coding agents — think Claude Code, Codex, Claw Code — changed the way we do programming.
 
@@ -30,7 +31,7 @@ Calling MCP sometimes fails for unknown reasons. MCP calls usually take time (wh
 It is not always clear what the result of calling MCP is.
 
 
-# Idea
+# What is GitFS
 What if we could represent net services (web/network tools or services, SaaS, IaaS, FaaS) as files?
 
 Examples of net services:
@@ -84,34 +85,22 @@ Dead internet theory at its finest.
 
 
 # Current repo state
-I have played with the CLI UX/DX.
-The CLI is implemented in Go.
 
-What is ready: IMAP protocol to download emails, SMTP to send emails.
-
-Init, fetch emails:
-```shell
-gfs clone imap://kbogdan@dwa.ovh gfs/mail/kbogdan_dwa_ovh
-```
-
-Emails created in the special folder /outbox (gfs/mail/kbogdan_dwa_ovh/outbox) will be sent during `git commit`.
-Emails are plain text files with Markdown with frontmatter, as in the example earlier.
+The CLI is implemented in Go and follows `docs/superpowers/specs/2026-09-23-gfs-cli-design.md`.
+Implemented: the shared core (XML file model, canonical printer, status/diff/commit/pull/resolve/log/actions,
+three-way merge, policy) and one adapter, **Confluence Cloud**.
 
 ```shell
-cd gfs/mail/kbogdan_dwa_ovh
-gfs status # show locally modified, new or deleted files 
+export GFS_CONFLUENCE_EMAIL=me@example.com GFS_CONFLUENCE_TOKEN=<atlassian api token>
+gfs clone confluence://acme.atlassian.net/ENG confluence
+cd confluence
+vim eng/Home/Architecture.xml
+gfs status
+gfs commit --dry-run
 gfs commit
-# This will send emails and move them from /outbox to /send after success
 ```
 
-Emails are usually immutable, but technically nothing prevents an email provider from changing email content.
-For email, `gfs pull` will fetch new emails, delete locally emails deleted on remote, or move emails between folders.
-
-```shell
-gfs pull # can be called to fetch new emails or, if emails were rearranged in a folder, update them
-```
-
-In the case of other integrated services, pull could update the content of files the same as git pull does.
+See `example/` for how every adapter's files are meant to look.
 
 
 # Some thoughts 
@@ -166,3 +155,148 @@ Any Markdown file: `Summary 4.md` will get a key on commit and the file will be 
 Will we always require a special folder `/outbox`, and any file that is created there will represent new resource creation?
 What if a service that has folders (nesting) has outbox already taken?
 Even IMAP (email) could have an outbox folder that has some emails in it.
+
+
+# Comparison with git
+
+GitFS borrows the mental model of git and the command vocabulary, but the remote is a net service instead of a git server.
+
+
+| git                                     | gfs                                                    | Difference                                                                                                                             |
+|-----------------------------------------|--------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `git clone <repo-url> <dir>`            | `gfs clone <service-url> <dir>`                        | `git` downloads a repo. `gfs` connects to a net service (IMAP, Jira, Slack, …) and materializes its resources as files in `<dir>`.     |
+| `git status`                            | `gfs status`                                           | Both show locally modified, new, or deleted files. In `gfs`, those changes represent pending actions on the remote service.            |
+| `git commit`                            | `gfs commit`                                           | `git` records a snapshot locally. `gfs commit` performs side effects on the remote service — sending emails, creating Jira issues, etc.|
+| `git pull`                              | `gfs pull`                                             | `git` fetches and merges remote commits. `gfs pull` re-syncs files with the current state of the net service (new emails, moves, …).  |
+| `git push`                              | — (folded into `gfs commit`)                           | In `gfs`, commit already talks to the remote, so there is no separate push step.                                                        |
+| tracks a branch history (DAG)           | tracks the current remote state                        | `gfs` is not a version control system — there is no history graph, just a local mirror of what the service has now.                    |
+| remote is content-addressed, immutable  | remote is a live mutating service                      | A Jira issue can change under you; an IMAP folder can be rearranged. `gfs pull` reconciles those mutations into the working tree.      |
+
+
+# CLI ideas (spike)
+
+Three shapes the CLI could take. They differ in one thing: where the *intent* lives
+(send vs. store, create vs. move). Each is shown on the same two scenarios: send an email, create a Jira issue.
+
+## Idea 1: Git-shaped, intent lives in the file
+
+Keep the git vocabulary exactly (`clone`, `status`, `diff`, `add`, `commit`, `pull`, `log`).
+No special folders. What `commit` should *do* with a file is written in the file itself, as frontmatter.
+Files without an action are just stored/moved; files with an action are executed, then the action key is removed.
+
+```shell
+gfs clone imap+smtp://kbogdan@dwa.ovh mail/
+cd mail
+
+# just a draft, nothing will be sent
+cat > drafts/re-dh.md <<'MD'
+to: bob@example.com
+subject: Re: Diffie–Hellman key exchange
+---
+Hello Bob, ...
+MD
+gfs commit                 # stores in IMAP /Drafts, sends nothing
+
+# now send it: add an action, commit
+sed -i '1i action: send' drafts/re-dh.md
+gfs diff                   # shows the pending action, not only the text diff:
+#   drafts/re-dh.md   action: send  -> will be sent via smtp, then moved to sent/
+gfs commit --dry-run       # same as diff, but resolves everything the remote would do
+gfs commit                 # sends, file lands in sent/re-dh.md, action key gone
+```
+
+```shell
+gfs clone jira://instance/ABC jira/abc
+cat > jira/abc/Summary 4.md <<'MD'
+action: create
+type: Bug
+---
+Steps to reproduce ...
+MD
+gfs commit                 # file renamed to "ABC-118564 Summary 4.md", action key removed
+gfs log                    # what commits did on the remote (sent, created ABC-118564, ...)
+```
+
+Service-specific actions are just values: `action: send`, `action: create`, `action: transition/Done`, `action: publish`.
+`gfs actions` lists what the current service understands.
+
+Pros: pure "edit a file" model, an agent needs zero CLI knowledge beyond `commit`.
+Move-vs-send ambiguity is gone because a move never has an action key.
+Cons: intent mixed with content, and a stale `action:` line committed by mistake fires a side effect.
+`--dry-run` is the safety net, so it must be first-class.
+
+## Idea 2: Verb-shaped, intent lives in the command
+
+Drop `commit` as the universal side-effect trigger. Files are the *payload*; the command is the *operation*.
+Generic CRUD verbs work everywhere, service-specific verbs live under the service name.
+`status` and `pull` stay for sync, plain edits + `gfs update` cover the "edit an existing resource" case.
+
+```shell
+gfs clone imap+smtp://kbogdan@dwa.ovh mail/
+cd mail
+
+vim drafts/re-dh.md
+gfs create drafts/re-dh.md              # stores in /Drafts (the folder decides the IMAP target)
+gfs smtp send drafts/re-dh.md           # sends; result file moves to sent/
+gfs mv sent/re-dh.md archive/2026/      # a move is always just a move
+gfs rm spam/*.md
+```
+
+```shell
+gfs clone jira://instance/ABC jira/abc
+vim "jira/abc/Summary 4.md"
+gfs create "jira/abc/Summary 4.md"      # -> ABC-118564 Summary 4.md
+vim "jira/abc/ABC-118564 Summary 4.md"  # edit description
+gfs update jira/abc/ABC-118564*         # or: gfs update .  (everything modified per status)
+gfs jira transition ABC-118564 --to "In Progress"
+gfs jira worklog ABC-118564 2h "reviewing PR"
+gfs jira --help                         # every service exposes its verbs here
+```
+
+Pros: zero ambiguity, discoverable via `--help`, easy to grant/deny per verb (an agent may `update` but never `send`).
+Cons: it is no longer "just files"; the agent has to learn per-service verbs, which is the MCP problem again in small.
+Also two ways to edit (`update` vs. a hypothetical `commit`) must not coexist.
+
+## Idea 3: Filesystem-shaped, intent lives in the directory
+
+No commands after `mount`. Every operation is a filesystem operation; the CLI is only a daemon
+plus a control directory. This is the most agent-friendly shape, because agents already know `mv`, `cat`, `grep`.
+
+```shell
+gfs mount imap+smtp://kbogdan@dwa.ovh ~/gfs/mail    # FUSE, or a watcher that applies on save
+tree -a ~/gfs/mail
+# .gfs/
+#   log          # append-only: what happened, one line per action
+#   errors/      # one file per failed action, with the original payload
+#   pull         # touch it to force a re-sync (daemon also syncs periodically)
+# inbox/  drafts/  sent/  archive/
+# outbox/        # the ONE reserved dir per service: create/execute happens here
+```
+
+```shell
+cp draft.md ~/gfs/mail/drafts/      # stored as a draft, nothing sent
+mv ~/gfs/mail/drafts/draft.md ~/gfs/mail/outbox/   # sent; daemon moves it to sent/ (or errors/)
+tail -f ~/gfs/mail/.gfs/log
+# 12:01:03 send    outbox/draft.md -> sent/draft.md  (message-id <...>)
+```
+
+```shell
+gfs mount jira://instance/ABC ~/gfs/jira/abc
+echo "..." > ~/gfs/jira/abc/outbox/Summary 4.md      # appears as "ABC-118564 Summary 4.md" once created
+echo "- 2h reviewing PR" >> ~/gfs/jira/abc/ABC-118564*/worklog.md   # sub-files for sub-resources
+mv ~/gfs/jira/abc/ABC-118564* ~/gfs/jira/abc/.gfs/transition/Done/  # state changes as moves
+```
+
+The reserved-name clash ("what if IMAP already has an outbox") is solved by namespacing: the reserved
+directory is `.gfs/outbox/` (or `_outbox/`), never a plain name the service could own.
+
+Pros: nothing to learn, works from any language, shell, or agent; observable via `log`.
+Cons: no dry-run and no "review before it fires", so it needs a `.gfs/hold` mode (queue, apply on `touch .gfs/go`)
+which quietly reinvents `commit`. Errors are asynchronous, so the agent must read `errors/` to know it failed.
+
+## Where I lean
+
+Idea 1 for the default (`commit` stays the single trigger, `--dry-run` shows the plan),
+with the reserved `.gfs/` namespace from idea 3 for logs/errors,
+and idea 2's `gfs <service> <verb>` as an escape hatch for actions that do not map to a file edit at all
+(transition, worklog, webhook replay). The frontmatter `action:` key is what resolves the send-vs-move problem.
