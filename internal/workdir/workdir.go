@@ -170,6 +170,9 @@ func (t *Tree) Scan() ([]string, error) {
 	return out, err
 }
 
+// WriteAtomic writes data to path through a temp file and a rename.
+func WriteAtomic(path string, data []byte) error { return writeAtomic(path, data) }
+
 func writeAtomic(path string, data []byte) error {
 	return writeAtomicFunc(path, func(w io.Writer) error {
 		_, err := w.Write(data)

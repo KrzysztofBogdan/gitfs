@@ -91,3 +91,13 @@ func (t *Tree) LoadConfig() (*Config, error) {
 }
 
 func (t *Tree) SaveConfig(c *Config) error { return writeAtomic(t.gfs("config"), c.Bytes()) }
+
+// Sections returns the section names in sorted order.
+func (c *Config) Sections() []string {
+	names := make([]string, 0, len(c.sections))
+	for n := range c.sections {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
