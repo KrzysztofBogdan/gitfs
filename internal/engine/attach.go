@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/attach"
+	"github.com/KrzysztofBogdan/gitfs/internal/changes"
 	"github.com/KrzysztofBogdan/gitfs/internal/envelope"
 	"github.com/KrzysztofBogdan/gitfs/internal/schema"
 	"github.com/KrzysztofBogdan/gitfs/internal/workdir"
@@ -158,4 +161,138 @@ func sortedIDs(m map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// syncCommitted updates tracking after a commit's write-back (attachments spec
+// 4.4): uploaded files are tracked at their new version without re-downloading,
+// deleted ones are forgotten, and every file moves to its derived path.
+func (e *Env) syncCommitted(resID, resPath string, root *xmltree.Node, results []adapter.Result) error {
+	for _, res := range results {
+		a := res.Action
+		if !a.IsAttachment() || res.Err != nil {
+			continue
+		}
+		id, _, _ := adapter.ParseAttachmentTarget(a.Target)
+		switch a.Verb {
+		case "create", "update":
+			if res.ID != "" {
+				id = res.ID
+			}
+			line, err := attach.Entry(e.Tree, resID, id, res.Version, a.File)
+			if err != nil {
+				return err
+			}
+			e.Atts.Put(line)
+		case "delete":
+			if l, ok := e.Atts.Get(resID, id); ok && e.Tree.Exists(l.Path) {
+				if err := e.Tree.Remove(l.Path); err != nil {
+					return err
+				}
+			}
+			e.Atts.Delete(resID, id)
+		}
+	}
+	_, err := e.placeAttachments(resID, resPath, root)
+	return err
+}
+
+// sidecarFiles lists the files an explicit verb sends along (attachments spec 4.4).
+func (e *Env) sidecarFiles(fc changes.FileChange) []string {
+	if fc.Local == nil || fc.Local.Action == "" {
+		return nil
+	}
+	files, _, _ := e.Tree.ListSidecar(attach.SidecarDir(fc.Path))
+	var out []string
+	for _, f := range files {
+		if _, isCopy := attach.ConflictOriginal(path.Base(f)); !isCopy && !strings.HasPrefix(path.Base(f), ".") {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// checkAttachments is commit step 3 for attachment actions (spec 4.4). An
+// update whose remote version moved since the line becomes a conflict with a
+// remote copy; a delete of an attachment already gone succeeds without a call.
+func (e *Env) checkAttachments(ctx context.Context, fc changes.FileChange, remote *adapter.Resource, acts []adapter.Action, r *Report) ([]adapter.Action, error) {
+	el := e.attachmentElem()
+	if el == nil {
+		return acts, nil
+	}
+	remoteEls := attach.Elements(remote.Root, el)
+	var kept []adapter.Action
+	for _, a := range acts {
+		if !a.IsAttachment() || a.Verb == "create" {
+			kept = append(kept, a)
+			continue
+		}
+		id, _, _ := adapter.ParseAttachmentTarget(a.Target)
+		rel := remoteEls[id]
+		switch {
+		case a.Verb == "delete" && rel == nil:
+			r.Actions++
+			e.line("delete", a.File, "", "ok", "already deleted on remote")
+			e.Log("delete", a.File, "", "ok", "already deleted on remote")
+			if l, ok := e.Atts.Get(fc.ID, id); ok {
+				if err := e.forgetAttachment(fc.ID, id, l.Path); err != nil {
+					return nil, err
+				}
+			}
+		case a.Verb == "update" && rel == nil:
+			r.Conflicts++
+			fmt.Fprintf(e.Out, "  C  %s   deleted on remote; kept because it changed locally\n", a.File)
+			e.Log("update", a.File, "", "FAIL", "deleted on remote")
+		case a.Verb == "update":
+			line, _ := e.Atts.Get(fc.ID, id)
+			v := attach.Version(rel, el)
+			if v == line.Version {
+				kept = append(kept, a)
+				continue
+			}
+			cp := attach.ConflictCopy(a.File, v)
+			if !e.Tree.Exists(cp) {
+				if _, err := e.download(ctx, fc.ID, id, cp); err != nil {
+					r.Failed++
+					e.line("update", a.File, "", "FAIL", "remote moved to v"+v+"; download failed: "+oneLine(err))
+					continue
+				}
+			}
+			r.Conflicts++
+			fmt.Fprintf(e.Out, "  C  %s   changed locally and on remote v%s; remote copy: %s\n", a.File, v, path.Base(cp))
+			e.Log("update", a.File, "", "FAIL", "conflict with remote v"+v)
+		default:
+			kept = append(kept, a)
+		}
+	}
+	return kept, nil
+}
+
+// withRemoteAttachments is the write-back content of a Quiet file: its own (or
+// merged) content with the remote's service-owned root attributes and
+// attachment elements, so local edits that were not committed survive.
+func (e *Env) withRemoteAttachments(content, remote *xmltree.Node) *xmltree.Node {
+	el := e.attachmentElem()
+	out := content.Clone()
+	out.Attrs = append([]xmltree.Attr(nil), remote.Attrs...)
+	out.Children = slices.DeleteFunc(out.Children, func(c *xmltree.Node) bool {
+		return c.Kind == xmltree.Element && c.Name == el.Name
+	})
+	for _, c := range remote.ChildrenNamed(el.Name) {
+		out.Children = append(out.Children, c.Clone())
+	}
+	return out
+}
+
+// fastForward writes back a Quiet file none of whose actions is left to run,
+// so its attachment elements show the remote versions (plan design decision 4).
+func (e *Env) fastForward(fc changes.FileChange, remote *adapter.Resource, content *xmltree.Node) error {
+	root := e.withRemoteAttachments(content, remote.Root)
+	if err := e.Tree.WriteFile(fc.Path, e.Canonical(root)); err != nil {
+		return err
+	}
+	if err := e.StoreBase(remote, fc.Entry.Path); err != nil {
+		return err
+	}
+	_, err := e.placeAttachments(fc.ID, fc.Path, root)
+	return err
 }

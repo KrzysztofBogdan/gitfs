@@ -55,6 +55,14 @@ func plural(n int, word string) string {
 
 func oneLine(err error) string { return strings.ReplaceAll(err.Error(), "\n", "; ") }
 
+// actPath is the path an action is reported under: its attachment file, or the resource.
+func actPath(fc changes.FileChange, a adapter.Action) string {
+	if a.IsAttachment() {
+		return a.File
+	}
+	return fc.Path
+}
+
 func (e *Env) line(verb, path, newPath, outcome, detail string) {
 	p := path
 	if newPath != "" && newPath != path {
@@ -109,8 +117,23 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 	return r, nil
 }
 
-// precheck handles C, invalid and no-op files. It returns false when the file is done.
+// precheck reports attachment conflicts and refusals, then handles C, invalid
+// and no-op files. It returns false when the file is done.
 func (e *Env) precheck(fc changes.FileChange, r *Report) bool {
+	for _, a := range fc.Attachments {
+		switch a.Status {
+		case 'C':
+			r.Conflicts++
+			fmt.Fprintf(e.Out, "  C  %s   %s\n", a.Path, a.Note)
+		case '!':
+			r.Failed++
+			e.line("invalid", a.Path, "", "FAIL", a.Note)
+			e.Log("invalid", a.Path, "", "FAIL", a.Note)
+		}
+	}
+	if fc.Quiet && fc.Status == 'C' {
+		return false // tracked files of a resource that is gone, reported above
+	}
 	switch {
 	case fc.Status == 'C':
 		r.Conflicts++
@@ -138,7 +161,7 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 	if fc.Local != nil {
 		checks = e.Session.Check(ctx, adapter.ApplyRequest{
 			Local: &adapter.Resource{ID: fc.ID, Path: fc.Path, Root: fc.Local.Content},
-			Base:  baseResource(fc), Actions: fc.Actions, IDByPath: e.IDByPath,
+			Base:  baseResource(fc), Actions: fc.Actions, IDByPath: e.IDByPath, Open: e.open,
 		})
 	}
 	for i, a := range fc.Actions {
@@ -160,10 +183,10 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 		}
 		if i < len(checks) && checks[i].Err != nil {
 			r.Failed++
-			e.line(a.Verb, fc.Path, a.To, "FAIL", oneLine(checks[i].Err))
+			e.line(a.Verb, actPath(fc, a), a.To, "FAIL", oneLine(checks[i].Err))
 			continue
 		}
-		e.line(a.Verb, fc.Path, a.To, "would run", strings.TrimSpace(a.Detail+"  "+mark))
+		e.line(a.Verb, actPath(fc, a), a.To, "would run", strings.TrimSpace(a.Detail+"  "+mark))
 	}
 }
 
@@ -179,14 +202,16 @@ func (e *Env) commitFile(ctx context.Context, fc changes.FileChange, d *policy.D
 		return nil
 	}
 	for _, a := range fc.Actions {
-		if run, reason := d.Decide(a.Class, fmt.Sprintf("%s %s ?", a.Verb, fc.Path)); !run {
+		p := actPath(fc, a)
+		if run, reason := d.Decide(a.Class, fmt.Sprintf("%s %s ?", a.Verb, p)); !run {
 			r.Denied++
-			e.line(a.Verb, fc.Path, "", "denied", reason)
-			e.Log(a.Verb, fc.Path, "", "denied", reason)
+			e.line(a.Verb, p, "", "denied", reason)
+			e.Log(a.Verb, p, "", "denied", reason)
 			return nil
 		}
 	}
 	s := e.Adapter.Schema()
+	acts := fc.Actions
 	for attempt := 0; ; attempt++ {
 		var remote *adapter.Resource
 		content := (*xmltree.Node)(nil)
@@ -204,10 +229,10 @@ func (e *Env) commitFile(ctx context.Context, fc changes.FileChange, d *policy.D
 					e.Log("delete", fc.Path, "", "ok", "already deleted on remote")
 					return e.Forget(fc.ID, fc.Path)
 				}
-				return e.failAll(fc, fc.Actions, errors.New("deleted on remote; run gfs pull"), r)
+				return e.failAll(fc, acts, errors.New("deleted on remote; run gfs pull"), r)
 			}
 			if err != nil {
-				return e.failAll(fc, fc.Actions, err, r)
+				return e.failAll(fc, acts, err, r)
 			}
 			if changes.CanonContent(remote.Root, s) != changes.CanonContent(fc.Base.Content, s) {
 				if fc.Status == 'D' {
@@ -220,19 +245,31 @@ func (e *Env) commitFile(ctx context.Context, fc changes.FileChange, d *policy.D
 				}
 				res, err := merge.Merge(fc.Base.Content, fc.Local.Content, remote.Root, s, "remote v"+remote.Version)
 				if err != nil {
-					return e.failAll(fc, fc.Actions, fmt.Errorf("merge: %w", err), r)
+					return e.failAll(fc, acts, fmt.Errorf("merge: %w", err), r)
 				}
 				if res.Conflicted() {
 					return e.writeConflict(fc, remote, res, r)
 				}
 				content, merged = res.Root, true
 			}
+			if fc.Status != 'D' {
+				if acts, err = e.checkAttachments(ctx, fc, remote, acts, r); err != nil {
+					return err
+				}
+				if len(acts) == 0 {
+					if fc.Quiet {
+						return e.fastForward(fc, remote, content)
+					}
+					return nil
+				}
+			}
 		}
 		local := &adapter.Resource{ID: fc.ID, Path: fc.Path, Root: content}
 		if fc.Status == 'D' {
 			local = remote
 		}
-		req := adapter.ApplyRequest{Local: local, Base: remote, Actions: fc.Actions, IDByPath: e.IDByPath}
+		req := adapter.ApplyRequest{Local: local, Base: remote, Actions: acts, IDByPath: e.IDByPath,
+			Open: e.open, Files: e.sidecarFiles(fc)}
 		if remote != nil {
 			req.Lock = remote.Version
 		}
@@ -298,7 +335,7 @@ func (e *Env) finish(ctx context.Context, fc changes.FileChange, content *xmltre
 			moveFailed = moveFailed || res.Action.Verb == "move"
 			continue
 		}
-		if res.ID != "" {
+		if res.ID != "" && !res.Action.IsAttachment() {
 			id = res.ID
 		}
 		if res.Action.Verb == "delete" && res.Action.Target == "" {
@@ -307,19 +344,27 @@ func (e *Env) finish(ctx context.Context, fc changes.FileChange, content *xmltre
 	}
 	report := func(newPath string) {
 		for _, res := range results {
+			a := res.Action
 			outcome, detail := "ok", res.Detail
 			if merged {
 				outcome = "merged"
 			}
+			if a.IsAttachment() && a.Verb == "create" && detail == "" && res.ID != "" {
+				detail = "id=" + res.ID
+			}
 			if res.Err != nil {
 				outcome, detail = "FAIL", oneLine(res.Err)
 			}
-			np := ""
-			if res.Action.Verb == "move" || res.Err == nil {
+			np, target := "", a.Target
+			if !a.IsAttachment() && (a.Verb == "move" || res.Err == nil) {
 				np = newPath
 			}
-			e.line(res.Action.Verb, fc.Path, np, outcome, strings.TrimSpace(res.Action.Target+" "+detail))
-			e.Log(res.Action.Verb, fc.Path, np, outcome, strings.TrimSpace(res.Action.Target+" "+detail))
+			if a.IsAttachment() {
+				target = "" // the path already names the attachment
+			}
+			p := actPath(fc, a)
+			e.line(a.Verb, p, np, outcome, strings.TrimSpace(target+" "+detail))
+			e.Log(a.Verb, p, np, outcome, strings.TrimSpace(target+" "+detail))
 		}
 	}
 	if len(failed) == len(results) {
@@ -343,6 +388,9 @@ func (e *Env) finish(ctx context.Context, fc changes.FileChange, content *xmltre
 		return nil
 	}
 	wb := remote.Root.Clone()
+	if fc.Quiet && content != nil {
+		wb = e.withRemoteAttachments(content, remote.Root) // keep unselected local edits
+	}
 	doc := envelope.New(wb)
 	path := remote.Path
 	if len(failed) > 0 {
@@ -364,7 +412,10 @@ func (e *Env) finish(ctx context.Context, fc changes.FileChange, content *xmltre
 		}
 	}
 	report(path)
-	return e.StoreBase(remote, fc.Entry.Path)
+	if err := e.StoreBase(remote, fc.Entry.Path); err != nil {
+		return err
+	}
+	return e.syncCommitted(id, path, remote.Root, results)
 }
 
 // keepLocal puts the local form of failed parts back into the written-back tree,
@@ -375,6 +426,9 @@ func keepLocal(wb, local *xmltree.Node, failed []adapter.Result, s *schema.Schem
 	}
 	for _, f := range failed {
 		a := f.Action
+		if a.IsAttachment() && a.Verb != "delete" {
+			continue // the local file and its tracking line stay as they are
+		}
 		if a.Target == "" {
 			if a.Verb == "update" && a.Group != "" {
 				replaceGroup(wb, local, a.Group)
