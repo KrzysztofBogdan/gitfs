@@ -154,7 +154,7 @@ not warn.
 | you do | status | commit does |
 |--------|--------|-------------|
 | create `Parent/New.xml` | `A  create page under "Parent"` | creates the page as a child of `Parent` |
-| create `eng/New.xml` | `A  create top-level page` | creates a page at the space root |
+| create `eng/New.xml` | `A  create top-level page` | Confluence Cloud puts it under the space homepage; the file moves to `eng/<Home>/New.xml` |
 | edit `<body>` | `M  update body` | new page version |
 | edit `<title>` | `M  rename page to "…"` | renames the page; the file is renamed on write-back |
 | edit `<labels>` | `M  update labels` | adds and removes labels |
