@@ -4,8 +4,11 @@ package fake
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
+	"path"
 	"regexp"
+	"slices"
 	"strconv"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
@@ -23,21 +26,33 @@ var Schema = &schema.Schema{
 		{Name: "body", Kind: schema.Body, Attrs: []schema.Attr{{Name: "type"}}, BodyTypes: []string{"text/plain"}},
 		{Name: "comment", Kind: schema.Sub, ID: "id", SortKey: "created",
 			Attrs: []schema.Attr{{Name: "id", ReadOnly: true}, {Name: "created", ReadOnly: true}}},
+		{Name: "attachment", Kind: schema.Attachment, ID: "id", SortKey: "created", NameAttr: "name", VersionAttr: "version",
+			Ops: []string{"create", "update", "delete"},
+			Attrs: []schema.Attr{{Name: "id", ReadOnly: true}, {Name: "name", ReadOnly: true}, {Name: "size", ReadOnly: true},
+				{Name: "version", ReadOnly: true}, {Name: "created", ReadOnly: true}}},
 	},
+}
+
+type attachment struct {
+	id, name, created string
+	data              []byte
+	version           int
 }
 
 type record struct {
 	path    string
-	root    *xmltree.Node
+	root    *xmltree.Node // never holds attachment elements; resource() adds them
 	version int
 	by      string
+	atts    []*attachment
 }
 
 type Remote struct {
-	FailVerb     map[string]error // keyed by verb, or verb+" "+target
+	FailVerb     map[string]error // keyed by verb, or verb+" "+target; "download" fails Download
 	LockFailures int              // Apply returns ErrLock this many times
-	Calls        []string         // "verb path" per executed action
+	Calls        []string         // "verb path" per executed action ("verb file" for attachments)
 	Published    []string         // "path channel"
+	Downloads    int              // successful Download calls
 	recs         map[string]*record
 	seq          int
 }
@@ -76,6 +91,60 @@ func (r *Remote) Edit(id string, f func(root *xmltree.Node)) {
 func (r *Remote) Delete(id string)     { delete(r.recs, id) }
 func (r *Remote) Move(id, path string) { r.recs[id].path = path; r.recs[id].version++ }
 
+// PutAttachment adds an attachment to resource resID at version 1.
+func (r *Remote) PutAttachment(resID, attID, name string, data []byte) {
+	rec := r.recs[resID]
+	rec.atts = append(rec.atts, &attachment{id: attID, name: name, created: "2026-01-01T00:00:00Z", data: data, version: 1})
+}
+
+// EditAttachment replaces an attachment's bytes on the remote and bumps its version.
+func (r *Remote) EditAttachment(resID, attID string, data []byte) {
+	a := findAtt(r.recs[resID], attID)
+	a.data, a.version = data, a.version+1
+}
+
+func (r *Remote) RenameAttachment(resID, attID, name string) {
+	findAtt(r.recs[resID], attID).name = name
+}
+
+func (r *Remote) DeleteAttachment(resID, attID string) {
+	rec := r.recs[resID]
+	rec.atts = slices.DeleteFunc(rec.atts, func(a *attachment) bool { return a.id == attID })
+}
+
+// Attachment returns an attachment's bytes and version.
+func (r *Remote) Attachment(resID, attID string) ([]byte, int, bool) {
+	a := findAtt(r.recs[resID], attID)
+	if a == nil {
+		return nil, 0, false
+	}
+	return a.data, a.version, true
+}
+
+// AttachmentNamed returns the id of resID's attachment called name.
+func (r *Remote) AttachmentNamed(resID, name string) (string, bool) {
+	if rec := r.recs[resID]; rec != nil {
+		for _, a := range rec.atts {
+			if a.name == name {
+				return a.id, true
+			}
+		}
+	}
+	return "", false
+}
+
+func findAtt(rec *record, id string) *attachment {
+	if rec == nil {
+		return nil
+	}
+	for _, a := range rec.atts {
+		if a.id == id {
+			return a
+		}
+	}
+	return nil
+}
+
 func (r *Remote) Get(id string) (*adapter.Resource, bool) {
 	rec, ok := r.recs[id]
 	if !ok {
@@ -88,17 +157,44 @@ func (r *Remote) resource(id string, rec *record) *adapter.Resource {
 	root := rec.root.Clone()
 	root.SetAttr("id", id)
 	root.SetAttr("version", strconv.Itoa(rec.version))
+	for _, a := range rec.atts {
+		root.Children = append(root.Children, &xmltree.Node{Kind: xmltree.Element, Name: "attachment", Attrs: []xmltree.Attr{
+			{Name: "id", Value: a.id}, {Name: "name", Value: a.name}, {Name: "size", Value: strconv.Itoa(len(a.data))},
+			{Name: "version", Value: strconv.Itoa(a.version)}, {Name: "created", Value: a.created}}})
+	}
 	return &adapter.Resource{ID: id, Version: strconv.Itoa(rec.version), Path: rec.path,
 		By: rec.by, At: "2026-09-23T12:00:00Z", Root: root}
 }
 
-type Adapter struct{ Remote *Remote }
+type Adapter struct {
+	Remote *Remote
+	sch    *schema.Schema
+}
 
-func New() *Adapter { return &Adapter{Remote: &Remote{recs: map[string]*record{}}} }
+func New() *Adapter { return &Adapter{Remote: &Remote{recs: map[string]*record{}}, sch: Schema} }
+
+// ReadOnlyAttachments makes this adapter's attachment kind allow no operation.
+func (a *Adapter) ReadOnlyAttachments() {
+	s := *Schema
+	s.Elems = slices.Clone(Schema.Elems)
+	for i := range s.Elems {
+		if s.Elems[i].Kind == schema.Attachment {
+			s.Elems[i].Ops = nil
+		}
+	}
+	a.sch = &s
+}
+
+// Schema is the adapter's schema: the package Schema unless ReadOnlyAttachments changed it.
+func (a *Adapter) Schema() *schema.Schema {
+	if a.sch == nil {
+		return Schema
+	}
+	return a.sch
+}
 
 func (*Adapter) Name() string                 { return "fake" }
 func (*Adapter) Schemes() []string            { return []string{"fake"} }
-func (*Adapter) Schema() *schema.Schema       { return Schema }
 func (*Adapter) PathModel() adapter.PathModel { return adapter.Tree }
 func (*Adapter) DefaultDir(*url.URL) string   { return "fake" }
 func (*Adapter) Verbs() []adapter.Verb {
@@ -143,6 +239,21 @@ func (s session) Fetch(_ context.Context, id string) (*adapter.Resource, error) 
 	return res, nil
 }
 
+func (s session) Download(_ context.Context, resID, attID string, w io.Writer) (adapter.AttachmentInfo, error) {
+	if err := s.r.FailVerb["download"]; err != nil {
+		return adapter.AttachmentInfo{}, err
+	}
+	a := findAtt(s.r.recs[resID], attID)
+	if a == nil {
+		return adapter.AttachmentInfo{}, adapter.ErrNotFound
+	}
+	n, err := w.Write(a.data)
+	if err == nil {
+		s.r.Downloads++
+	}
+	return adapter.AttachmentInfo{Version: strconv.Itoa(a.version), Size: int64(n)}, err
+}
+
 func (s session) Check(_ context.Context, req adapter.ApplyRequest) []adapter.Result {
 	var out []adapter.Result
 	for _, a := range req.Actions {
@@ -185,6 +296,11 @@ func (s session) Apply(_ context.Context, req adapter.ApplyRequest) []adapter.Re
 			out = append(out, res)
 			continue
 		}
+		if a.IsAttachment() {
+			s.r.Calls = append(s.r.Calls, a.Verb+" "+a.File)
+			out = append(out, s.applyAttachment(rec, req, a))
+			continue // attachment changes do not bump the resource version
+		}
 		s.r.Calls = append(s.r.Calls, a.Verb+" "+req.Local.Path)
 		switch {
 		case a.Verb == "create" && a.Target == "":
@@ -196,6 +312,9 @@ func (s session) Apply(_ context.Context, req adapter.ApplyRequest) []adapter.Re
 			}
 			root.DelAttr("id")
 			root.DelAttr("version")
+			root.Children = slices.DeleteFunc(root.Children, func(c *xmltree.Node) bool {
+				return c.Kind == xmltree.Element && c.Name == "attachment"
+			})
 			rec = &record{path: req.Local.Path, root: root, version: 0, by: "me"}
 			s.r.recs[id] = rec
 			res.ID = id
@@ -220,6 +339,56 @@ func (s session) Apply(_ context.Context, req adapter.ApplyRequest) []adapter.Re
 		rec.by = "me"
 	}
 	return out
+}
+
+func (s session) applyAttachment(rec *record, req adapter.ApplyRequest, a adapter.Action) adapter.Result {
+	res := adapter.Result{Action: a}
+	if rec == nil {
+		res.Err, res.Code = adapter.ErrNotFound, "404"
+		return res
+	}
+	read := func() ([]byte, error) {
+		rc, err := req.Open(a.File)
+		if err != nil {
+			return nil, err
+		}
+		defer rc.Close()
+		return io.ReadAll(rc)
+	}
+	id, _, _ := adapter.ParseAttachmentTarget(a.Target)
+	switch a.Verb {
+	case "create":
+		data, err := read()
+		if err != nil {
+			res.Err = err
+			return res
+		}
+		n := &attachment{id: "a" + s.r.next(), name: path.Base(a.File), created: "2026-09-23T12:00:00Z", data: data, version: 1}
+		rec.atts = append(rec.atts, n)
+		res.ID, res.Version = n.id, "1"
+	case "update":
+		x := findAtt(rec, id)
+		if x == nil {
+			res.Err, res.Code = adapter.ErrNotFound, "404"
+			return res
+		}
+		data, err := read()
+		if err != nil {
+			res.Err = err
+			return res
+		}
+		x.data, x.version = data, x.version+1
+		res.ID, res.Version = x.id, strconv.Itoa(x.version)
+	case "delete":
+		if findAtt(rec, id) == nil {
+			res.Err, res.Code = adapter.ErrNotFound, "404"
+			return res
+		}
+		rec.atts = slices.DeleteFunc(rec.atts, func(x *attachment) bool { return x.id == id })
+	default:
+		res.Err = fmt.Errorf("fake: no attachment action %q", a.Verb)
+	}
+	return res
 }
 
 func replaceGroup(dst, src *xmltree.Node, name string) {

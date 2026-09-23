@@ -4,8 +4,10 @@ package adapter
 import (
 	"context"
 	"errors"
+	"io"
 	"net/url"
 	"path"
+	"regexp"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/schema"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
@@ -43,6 +45,27 @@ type Action struct {
 	Detail   string // human-readable resolved action
 	From, To string // move
 	Params   map[string]string
+	File     string // attachment actions: sidecar path of the bytes; "" for resource actions
+}
+
+// IsAttachment reports whether a acts on an attachment (attachments spec 4.4).
+func (a Action) IsAttachment() bool { return a.File != "" }
+
+var attTargetRe = regexp.MustCompile(`^[\w:.-]+\[(?:id=([^\]]+)|file=(.+))\]$`)
+
+// AttachmentTarget names an existing attachment: attachment[id=att9].
+func AttachmentTarget(elem, id string) string { return elem + "[id=" + id + "]" }
+
+// NewAttachmentTarget names a new attachment by its file: attachment[file=a.png].
+func NewAttachmentTarget(elem, file string) string { return elem + "[file=" + file + "]" }
+
+// ParseAttachmentTarget returns the attachment id, or the file name of a new one.
+func ParseAttachmentTarget(t string) (id, file string, ok bool) {
+	m := attTargetRe.FindStringSubmatch(t)
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
 }
 
 type Verb struct {
@@ -63,14 +86,23 @@ type ApplyRequest struct {
 	Actions  []Action
 	Lock     string // remote version observed before Apply
 	IDByPath func(path string) (string, bool)
+	Open     func(rel string) (io.ReadCloser, error) // reads the sidecar file named by Action.File
+	Files    []string                                // explicit verbs: the resource's sidecar files
 }
 
 type Result struct {
-	Action Action
-	Err    error
-	Code   string // service error code, e.g. HTTP status
-	ID     string // create: new identity
-	Detail string // e.g. "v2 -> v3"
+	Action  Action
+	Err     error
+	Code    string // service error code, e.g. HTTP status
+	ID      string // create: new identity
+	Detail  string // e.g. "v2 -> v3"
+	Version string // attachment create/update: the attachment's new version
+}
+
+// AttachmentInfo describes downloaded attachment bytes.
+type AttachmentInfo struct {
+	Version string // "-" when the service has no versions
+	Size    int64
 }
 
 var (
@@ -94,5 +126,6 @@ type Session interface {
 	Fetch(ctx context.Context, id string) (*Resource, error)
 	Apply(ctx context.Context, req ApplyRequest) []Result
 	Check(ctx context.Context, req ApplyRequest) []Result
+	Download(ctx context.Context, resourceID, attachmentID string, w io.Writer) (AttachmentInfo, error)
 	Close() error
 }
