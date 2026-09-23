@@ -65,6 +65,9 @@ func (e *Env) Forget(id, path string) error {
 }
 
 func (e *Env) Log(verb, path, newPath, outcome, detail string) {
+	if newPath == path {
+		newPath = ""
+	}
 	_ = e.Tree.AppendLog(workdir.LogEntry{At: e.Now(), Verb: verb, Path: path, NewPath: newPath, Outcome: outcome, Detail: detail})
 }
 
