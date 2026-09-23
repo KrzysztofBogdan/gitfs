@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence" // registers confluence://
 )
 
 // ExitError carries a non-zero exit code out of a command.
