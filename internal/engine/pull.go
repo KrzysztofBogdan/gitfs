@@ -3,11 +3,15 @@ package engine
 import (
 	"context"
 	"fmt"
+	"path"
+	"sort"
 
+	"github.com/KrzysztofBogdan/gitfs/internal/attach"
 	"github.com/KrzysztofBogdan/gitfs/internal/changes"
 	"github.com/KrzysztofBogdan/gitfs/internal/envelope"
 	"github.com/KrzysztofBogdan/gitfs/internal/merge"
 	"github.com/KrzysztofBogdan/gitfs/internal/schema"
+	"github.com/KrzysztofBogdan/gitfs/internal/workdir"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
 
@@ -38,7 +42,7 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 		switch {
 		case c.Status == 'D':
 			deletedLocally[c.ID] = true
-		case c.ID != "":
+		case c.ID != "" && !c.Quiet:
 			localByID[c.ID] = c
 		}
 	}
@@ -207,6 +211,9 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 		r.Conflicts++
 		say("  C  %s   deleted on remote; remove <conflict/> and commit to re-create, or delete the file", local.Path)
 	}
+	if err := e.pullAttachments(ctx, o, say, &r); err != nil {
+		return r, err
+	}
 	e.Index.Cursor = l.Cursor
 	if err := e.Tree.SaveIndex(e.Index); err != nil {
 		return r, err
@@ -250,4 +257,114 @@ func stripSubs(n *xmltree.Node, elems []schema.Elem) {
 		}
 		stripSubs(c, e.Children)
 	}
+}
+
+// pullAttachments refreshes fetched attachments against the updated bases
+// (attachments spec 4.5). Attachments never fetched are never downloaded.
+func (e *Env) pullAttachments(ctx context.Context, o PullOpts, say func(string, ...any), r *PullReport) error {
+	el := e.attachmentElem()
+	if el == nil {
+		return nil
+	}
+	roots := map[string]*xmltree.Node{}
+	rootOf := func(en workdir.Entry) (*xmltree.Node, error) {
+		if root, ok := roots[en.ID]; ok {
+			return root, nil
+		}
+		root, err := e.baseRoot(en)
+		if err != nil {
+			return nil, err
+		}
+		roots[en.ID] = root
+		return root, nil
+	}
+	selected := func(l workdir.AttEntry) bool {
+		if o.Filter == nil || o.Filter(l.Path) {
+			return true
+		}
+		res, _ := attach.ResourceOf(l.Path)
+		return o.Filter(res)
+	}
+	for _, l := range e.Atts.All() {
+		if !selected(l) || !e.Tree.Exists(l.Path) {
+			continue // evicted, or moved with its sidecar: placeAttachments below
+		}
+		var rel *xmltree.Node
+		if en, ok := e.Index.ByID(l.ResID); ok {
+			root, err := rootOf(en)
+			if err != nil {
+				return err
+			}
+			rel = attach.Elements(root, el)[l.AttID]
+		}
+		changed, err := attach.Changed(e.Tree, l.Path, l)
+		if err != nil {
+			return err
+		}
+		if rel == nil {
+			if changed && !o.Force {
+				r.Conflicts++
+				say("  C  %s   deleted on remote; kept because it changed locally", l.Path)
+				continue
+			}
+			if err := e.forgetAttachment(l.ResID, l.AttID, l.Path); err != nil {
+				return err
+			}
+			e.removeConflictCopies(l.Path)
+			r.Deleted++
+			say("  -  %s   (deleted on remote)", l.Path)
+			continue
+		}
+		v := attach.Version(rel, el)
+		if v == l.Version || v == "-" {
+			continue
+		}
+		if changed && !o.Force {
+			cp := attach.ConflictCopy(l.Path, v)
+			if !e.Tree.Exists(cp) {
+				if _, err := e.download(ctx, l.ResID, l.AttID, cp); err != nil {
+					return err
+				}
+			}
+			r.Conflicts++
+			say("  C  %s   changed locally and on remote v%s; remote copy: %s", l.Path, v, path.Base(cp))
+			continue
+		}
+		line, err := e.download(ctx, l.ResID, l.AttID, l.Path)
+		if err != nil {
+			return err
+		}
+		e.Atts.Put(line)
+		e.removeConflictCopies(l.Path)
+		r.Updated++
+		say("  ~  %s", l.Path)
+	}
+	ids := map[string]bool{}
+	for _, l := range e.Atts.All() {
+		ids[l.ResID] = true
+	}
+	var order []string
+	for id := range ids {
+		order = append(order, id)
+	}
+	sort.Strings(order)
+	for _, id := range order {
+		en, ok := e.Index.ByID(id)
+		if !ok {
+			continue
+		}
+		root, err := rootOf(en)
+		if err != nil {
+			return err
+		}
+		moves, err := e.placeAttachments(id, en.Path, root)
+		if err != nil {
+			return err
+		}
+		for _, m := range moves {
+			r.Moved++
+			say("  ~  %s -> %s", m[0], m[1])
+		}
+	}
+	return e.saveAtts()
 }
