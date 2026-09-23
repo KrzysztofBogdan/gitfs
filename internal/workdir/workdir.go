@@ -4,6 +4,7 @@ package workdir
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -84,6 +85,62 @@ func (t *Tree) Exists(rel string) bool {
 	return err == nil
 }
 
+func (t *Tree) Open(rel string) (*os.File, error)    { return os.Open(t.Abs(rel)) }
+func (t *Tree) Stat(rel string) (os.FileInfo, error) { return os.Stat(t.Abs(rel)) }
+
+// WriteStream writes rel atomically from fill, creating parent directories.
+// Nothing is buffered in memory beyond what fill itself holds.
+func (t *Tree) WriteStream(rel string, fill func(io.Writer) error) error {
+	return writeAtomicFunc(t.Abs(rel), fill)
+}
+
+// ListSidecar returns the regular files and the subdirectories directly inside
+// the tree-relative dir, as tree-relative paths, sorted. Temp files of an
+// interrupted write are skipped; a missing dir is empty.
+func (t *Tree) ListSidecar(dir string) (files, dirs []string, err error) {
+	ents, err := os.ReadDir(t.Abs(dir))
+	if os.IsNotExist(err) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, e := range ents {
+		p := dir + "/" + e.Name()
+		switch {
+		case e.IsDir():
+			dirs = append(dirs, p)
+		case e.Type().IsRegular() && !strings.HasPrefix(e.Name(), ".gfs-tmp-"):
+			files = append(files, p)
+		}
+	}
+	return files, dirs, nil
+}
+
+// Sidecars returns every directory named *.files outside .gfs/, sorted.
+func (t *Tree) Sidecars() ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(t.Root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() || p == t.Root {
+			return nil
+		}
+		if p == filepath.Join(t.Root, Dir) {
+			return filepath.SkipDir
+		}
+		if strings.HasSuffix(d.Name(), ".files") {
+			r, _ := filepath.Rel(t.Root, p)
+			out = append(out, filepath.ToSlash(r))
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
+}
+
 func (t *Tree) Remove(rel string) error {
 	if err := os.Remove(t.Abs(rel)); err != nil {
 		return err
@@ -100,7 +157,7 @@ func (t *Tree) Scan() ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && p == filepath.Join(t.Root, Dir) {
+		if d.IsDir() && (p == filepath.Join(t.Root, Dir) || (p != t.Root && strings.HasSuffix(d.Name(), ".files"))) {
 			return filepath.SkipDir
 		}
 		if d.Type().IsRegular() {
@@ -114,6 +171,13 @@ func (t *Tree) Scan() ([]string, error) {
 }
 
 func writeAtomic(path string, data []byte) error {
+	return writeAtomicFunc(path, func(w io.Writer) error {
+		_, err := w.Write(data)
+		return err
+	})
+}
+
+func writeAtomicFunc(path string, fill func(io.Writer) error) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -121,7 +185,7 @@ func writeAtomic(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(data); err != nil {
+	if err := fill(f); err != nil {
 		f.Close()
 		os.Remove(f.Name())
 		return err
@@ -131,6 +195,7 @@ func writeAtomic(path string, data []byte) error {
 		return err
 	}
 	if err := os.Chmod(f.Name(), 0o644); err != nil {
+		os.Remove(f.Name())
 		return err
 	}
 	return os.Rename(f.Name(), path)
