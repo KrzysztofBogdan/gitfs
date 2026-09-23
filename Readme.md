@@ -88,12 +88,14 @@ Dead internet theory at its finest.
 
 The CLI is implemented in Go and follows `docs/superpowers/specs/2026-09-23-gfs-cli-design.md`.
 Implemented: the shared core (XML file model, canonical printer, status/diff/commit/pull/resolve/log/actions,
-three-way merge, policy) and one adapter, **Confluence Cloud**.
+three-way merge, policy) and one adapter, **Confluence Cloud**. Attachments are listed in every page and
+downloaded on demand with `gfs get` (`docs/superpowers/specs/2026-09-23-gfs-attachments-design.md`).
 
 ```shell
 export GFS_CONFLUENCE_EMAIL=me@example.com GFS_CONFLUENCE_TOKEN=<atlassian api token>
 gfs clone confluence://acme.atlassian.net/ENG confluence
 cd confluence
+gfs get eng/Home/Runbooks.xml      # download a page's attachments into eng/Home/Runbooks.files/
 vim eng/Home/Architecture.xml
 gfs status
 gfs commit --dry-run
