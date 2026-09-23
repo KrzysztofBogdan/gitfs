@@ -42,7 +42,16 @@ type Remote struct {
 	seq          int
 }
 
-func (r *Remote) next() string { r.seq++; return strconv.Itoa(r.seq) }
+// next returns a fresh id, skipping ids already taken by Put.
+func (r *Remote) next() string {
+	for {
+		r.seq++
+		id := strconv.Itoa(r.seq)
+		if _, taken := r.recs[id]; !taken {
+			return id
+		}
+	}
+}
 
 func parse(x string) *xmltree.Node {
 	n, err := xmltree.ParseString(x)

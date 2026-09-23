@@ -2,6 +2,8 @@ package changes
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/canon"
@@ -85,4 +87,18 @@ func ResolveActions(ad adapter.Adapter, base *xmltree.Node, local *envelope.Doc,
 		ad.Describe(&acts[i], res)
 	}
 	return acts
+}
+
+var targetRe = regexp.MustCompile(`^([\w:.-]+)\[(?:id=([^\]]+)|(\d+))\]$`)
+
+// ParseTarget splits "comment[id=7]" or "comment[2]".
+func ParseTarget(t string) (name, id string, nth int, ok bool) {
+	m := targetRe.FindStringSubmatch(t)
+	if m == nil {
+		return "", "", 0, false
+	}
+	if m[3] != "" {
+		nth, _ = strconv.Atoi(m[3])
+	}
+	return m[1], m[2], nth, true
 }
