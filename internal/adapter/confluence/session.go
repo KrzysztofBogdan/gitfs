@@ -148,10 +148,15 @@ func (s *session) Fetch(ctx context.Context, id string) (*adapter.Resource, erro
 	if err != nil {
 		return nil, err
 	}
+	atts, err := s.listAttachments(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	root, err := pageNode(p, labels, comments, func(a string) string { return s.name(ctx, a) })
 	if err != nil {
 		return nil, err
 	}
+	root.Children = append(root.Children, attachmentNodes(atts, func(a string) string { return s.name(ctx, a) })...)
 	return &adapter.Resource{ID: p.ID, Version: strconv.Itoa(p.Version.Number), Path: s.paths()[p.ID],
 		By: s.name(ctx, p.Version.AuthorID), At: p.Version.CreatedAt, Root: root}, nil
 }
@@ -221,6 +226,8 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 	for i, a := range req.Actions {
 		res := adapter.Result{Action: a}
 		switch {
+		case a.IsAttachment():
+			res.Err = checkAttachment(req, a)
 		case a.Target != "":
 		case a.Verb == "create":
 			title := titleOf(req.Local.Root)
@@ -255,10 +262,12 @@ func (s *session) Apply(ctx context.Context, req adapter.ApplyRequest) []adapter
 		}
 	}
 	out := make([]adapter.Result, len(req.Actions))
-	var pageIdx, labelIdx, commentIdx []int
+	var pageIdx, labelIdx, commentIdx, attIdx []int
 	for i, a := range req.Actions {
 		out[i].Action = a
 		switch {
+		case a.IsAttachment():
+			attIdx = append(attIdx, i)
 		case a.Target != "":
 			commentIdx = append(commentIdx, i)
 		case a.Verb == "create":
@@ -319,6 +328,10 @@ func (s *session) Apply(ctx context.Context, req adapter.ApplyRequest) []adapter
 		err := s.comment(ctx, id, req, req.Actions[i])
 		out[i].Err, out[i].Code = err, codeOf(err)
 	}
+	for _, i := range attIdx {
+		out[i].ID, out[i].Version, out[i].Err = s.attachment(ctx, id, req, req.Actions[i])
+		out[i].Code = codeOf(out[i].Err)
+	}
 	return out
 }
 
@@ -358,6 +371,13 @@ func (s *session) create(ctx context.Context, req adapter.ApplyRequest) []adapte
 		if err := s.postComment(ctx, p.ID, c); err != nil {
 			out = append(out, adapter.Result{Action: adapter.Action{Verb: "create", Target: fmt.Sprintf("comment[%d]", n+1)}, Err: err, Code: codeOf(err)})
 		}
+	}
+	for _, a := range req.Actions {
+		if !a.IsAttachment() {
+			continue
+		}
+		attID, ver, err := s.attachment(ctx, p.ID, req, a)
+		out = append(out, adapter.Result{Action: a, ID: attID, Version: ver, Err: err, Code: codeOf(err)})
 	}
 	return out
 }

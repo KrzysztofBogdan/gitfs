@@ -22,5 +22,10 @@ var pageSchema = &schema.Schema{
 		{Name: "comment", Kind: schema.Sub, ID: "id", SortKey: "created",
 			Attrs: []schema.Attr{{Name: "id", ReadOnly: true}, {Name: "author", ReadOnly: true},
 				{Name: "created", ReadOnly: true}, {Name: "version", ReadOnly: true}}},
+		{Name: "attachment", Kind: schema.Attachment, ID: "id", SortKey: "created", NameAttr: "name", VersionAttr: "version",
+			Ops: []string{"create", "update", "delete"},
+			Attrs: []schema.Attr{{Name: "id", ReadOnly: true}, {Name: "name", ReadOnly: true}, {Name: "type", ReadOnly: true},
+				{Name: "size", ReadOnly: true}, {Name: "version", ReadOnly: true}, {Name: "created", ReadOnly: true},
+				{Name: "author", ReadOnly: true}}},
 	},
 }

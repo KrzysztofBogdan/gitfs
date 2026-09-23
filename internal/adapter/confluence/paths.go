@@ -5,6 +5,8 @@ import (
 	"path"
 	"sort"
 	"strings"
+
+	"github.com/KrzysztofBogdan/gitfs/internal/attach"
 )
 
 type pageRef struct{ ID, Title, Parent string }
@@ -27,6 +29,9 @@ func sanitize(title string) string {
 	}
 	if s[0] == '.' {
 		s = "_" + s[1:]
+	}
+	if strings.HasSuffix(s, attach.SidecarSuffix) {
+		s += "_" // a page folder must never look like a sidecar
 	}
 	return s
 }

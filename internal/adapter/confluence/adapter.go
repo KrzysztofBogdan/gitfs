@@ -38,6 +38,21 @@ func baseName(p string) string { return strings.TrimSuffix(path.Base(p), ".xml")
 func (*Adapter) Describe(a *adapter.Action, local *adapter.Resource) {
 	a.Class = a.Verb
 	switch {
+	case a.IsAttachment():
+		switch a.Verb {
+		case "create":
+			title := titleOf(local.Root)
+			if title == "" {
+				title = baseName(local.Path)
+			}
+			a.Detail = fmt.Sprintf("attach to %q", title)
+		case "update":
+			a.Detail = "upload new version of attachment"
+		case "delete":
+			a.Detail = "delete attachment"
+		default:
+			a.Detail = a.Verb + " attachment (not supported by confluence)"
+		}
 	case a.Target != "":
 		_, id, _, _ := changes.ParseTarget(a.Target)
 		switch a.Verb {
