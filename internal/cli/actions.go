@@ -42,6 +42,13 @@ func newActions() *cobra.Command {
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "%s  %s  %s  %s\n", v.Name, pol.Level(v.Class), params, v.Help)
 			}
+			if el := env.Adapter.Schema().Attachment(); el != nil {
+				ops := strings.Join(el.Ops, " ")
+				if ops == "" {
+					ops = "read-only"
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "attachments  <%s>  %s\n", el.Name, ops)
+			}
 			return nil
 		},
 	}

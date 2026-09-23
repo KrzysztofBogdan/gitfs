@@ -68,6 +68,25 @@ func mark(pol *policy.Policy, a adapter.Action) string {
 }
 
 func printChange(w io.Writer, c changes.FileChange, pol *policy.Policy) {
+	if !c.Quiet {
+		printResource(w, c, pol)
+	}
+	for _, a := range c.Attachments {
+		detail := a.Note
+		if a.Action != nil {
+			detail = a.Action.Detail + mark(pol, *a.Action)
+		}
+		fmt.Fprintf(w, "  %c  %-40s %s\n", a.Status, a.Path, detail)
+	}
+}
+
+func printResource(w io.Writer, c changes.FileChange, pol *policy.Policy) {
+	var acts []adapter.Action
+	for _, a := range c.Actions {
+		if !a.IsAttachment() {
+			acts = append(acts, a)
+		}
+	}
 	p := c.Path
 	if c.OldPath != "" {
 		p = c.OldPath + " -> " + c.Path
@@ -80,15 +99,15 @@ func printChange(w io.Writer, c changes.FileChange, pol *policy.Policy) {
 		detail = "invalid: " + strings.ReplaceAll(c.Err.Error(), "\n", "; ")
 	case c.Status == '!' && c.Local != nil && len(c.Local.Errors) > 0:
 		detail = "failed: " + c.Local.Errors[0].Msg
-	case len(c.Actions) == 1:
-		detail = c.Actions[0].Detail + mark(pol, c.Actions[0])
+	case len(acts) == 1:
+		detail = acts[0].Detail + mark(pol, acts[0])
 	}
 	if c.Note != "" {
 		detail = strings.TrimSpace(detail + "  (" + c.Note + ")")
 	}
 	fmt.Fprintf(w, "  %c  %-40s %s\n", c.Status, p, detail)
-	if len(c.Actions) > 1 && c.Err == nil {
-		for _, a := range c.Actions {
+	if len(acts) > 1 && c.Err == nil {
+		for _, a := range acts {
 			fmt.Fprintf(w, "        %s%s\n", a.Detail, mark(pol, a))
 		}
 	}
