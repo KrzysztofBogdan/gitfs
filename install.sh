@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 mkdir -p "$INSTALL_DIR"
-go build -o "$INSTALL_DIR/gfs" ./cmd/gitfs
+go build -o "$INSTALL_DIR/gfs" ./cmd/gfs
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
