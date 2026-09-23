@@ -1,2 +1,2 @@
 <!-- content by label -->
-<ac:structured-macro ac:name="contentbylabel" ac:schema-version="3"><ac:parameter ac:name="cql">label = "gfs-test"</ac:parameter></ac:structured-macro>
+<ac:structured-macro ac:name="contentbylabel" ac:schema-version="4"><ac:parameter ac:name="cql">label = "gfs-test"</ac:parameter></ac:structured-macro>

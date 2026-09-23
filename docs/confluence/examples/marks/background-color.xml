@@ -1,0 +1,2 @@
+<!-- backgroundColor (text highlight): a background-color style in rgb(); hex values are converted to rgb -->
+<p><span style="background-color: rgb(220,223,228);">grey</span> <span style="background-color: rgb(198,237,251);">teal</span> <span style="background-color: rgb(211,241,167);">lime</span> <span style="background-color: rgb(254,222,200);">orange</span> <span style="background-color: rgb(253,208,236);">magenta</span> <span style="background-color: rgb(223,216,253);">purple</span> <span style="background-color: rgb(248,230,160);">yellow</span></p>

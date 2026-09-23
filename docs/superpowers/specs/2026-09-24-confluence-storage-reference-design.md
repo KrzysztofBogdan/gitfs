@@ -53,8 +53,11 @@ for any remote (env, URL user, host default, keyring).
    markers, and compare each segment with its source in canonical form.
 4. Canonical form for comparison: parsed with the storage parser, printed by
    `xmltree.Print`, with these service-owned attributes removed everywhere:
-   `ac:macro-id`, `ac:local-id`, `local-id`, `data-local-id`, `ac:schema-version`
-   is kept. The list lives in one place in the test.
+   `ac:macro-id`, `ac:local-id`, `local-id`, `data-local-id`, `ri:version-at-save`;
+   attributes sorted; `ac:parameter` children of a macro sorted by name
+   (Confluence reorders them). `ac:schema-version` is compared: Confluence
+   upgrades old versions, and the example should use the current one. The
+   rules live in one place (`canonicalFragment`).
 5. Report each variant as `same` or `changed` (`t.Log`). A changed variant is
    not a test failure unless it is recorded as `same` in `roundtrip.json`
    (regression).
