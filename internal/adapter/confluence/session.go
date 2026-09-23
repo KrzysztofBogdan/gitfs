@@ -43,6 +43,9 @@ func openSession(ctx context.Context, t target) (*session, error) {
 
 func (s *session) Close() error { return nil }
 
+// Identity is the account this session acts as (adapter.Identified).
+func (s *session) Identity() string { return s.c.t.email }
+
 func (s *session) loadTree(ctx context.Context) error {
 	tree := map[string]pageRef{}
 	err := s.c.paginate(ctx, "/wiki/api/v2/spaces/"+s.spaceID+"/pages?limit=250", func(raw json.RawMessage) error {

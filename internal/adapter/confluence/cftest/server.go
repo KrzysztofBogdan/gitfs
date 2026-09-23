@@ -34,7 +34,8 @@ type Server struct {
 	*httptest.Server
 	PageLimit int
 	Requests  []string
-	Fail      map[string]int // "METHOD /path" -> status returned instead of handling the request
+	Fail      map[string]int    // "METHOD /path" -> status returned instead of handling the request
+	Accounts  map[string]string // email -> token for GET /wiki/rest/api/user/current; nil accepts any credentials
 
 	mu          sync.Mutex
 	spaces      map[string]string // key -> id
@@ -65,6 +66,7 @@ func New() *Server {
 	mux.HandleFunc("POST /wiki/rest/api/content/{id}/label", s.addLabel)
 	mux.HandleFunc("DELETE /wiki/rest/api/content/{id}/label", s.removeLabel)
 	mux.HandleFunc("GET /wiki/rest/api/user", s.getUser)
+	mux.HandleFunc("GET /wiki/rest/api/user/current", s.currentUser)
 	mux.HandleFunc("GET /wiki/api/v2/pages/{id}/attachments", s.listAttachments)
 	mux.HandleFunc("GET /wiki/api/v2/attachments/{id}", s.getAttachment)
 	mux.HandleFunc("DELETE /wiki/api/v2/attachments/{id}", s.deleteAttachment)
@@ -477,6 +479,15 @@ func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"accountId": id, "displayName": name, "publicName": name})
+}
+
+func (s *Server) currentUser(w http.ResponseWriter, r *http.Request) {
+	u, p, _ := r.BasicAuth()
+	if s.Accounts != nil && s.Accounts[u] != p {
+		fail(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"accountId": "me", "displayName": s.users["me"], "email": u})
 }
 
 func (s *Server) AddAttachment(a Attachment) *Attachment {

@@ -215,3 +215,17 @@ func TestDescribe(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionIdentity(t *testing.T) {
+	s := cftest.New()
+	defer s.Close()
+	s.AddSpace("ENG", "100")
+	sess, err := openSession(context.Background(), target{base: s.URL, space: "ENG", email: "me@x.com", token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id adapter.Identified = sess
+	if id.Identity() != "me@x.com" {
+		t.Fatal(id.Identity())
+	}
+}

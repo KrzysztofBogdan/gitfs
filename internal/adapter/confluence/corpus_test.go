@@ -7,6 +7,7 @@ import (
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/canon"
+	"github.com/KrzysztofBogdan/gitfs/internal/creds"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
 
@@ -23,7 +24,7 @@ func TestCorpusRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tg, err := parseTarget(u, nil, os.Getenv)
+	tg, err := parseTarget(u, nil, os.Getenv, creds.System{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/changes"
+	"github.com/KrzysztofBogdan/gitfs/internal/creds"
 	"github.com/KrzysztofBogdan/gitfs/internal/schema"
 )
 
@@ -26,7 +27,7 @@ func (*Adapter) DefaultDir(*url.URL) string   { return "confluence" }
 func (*Adapter) Verbs() []adapter.Verb        { return nil }
 
 func (*Adapter) Open(ctx context.Context, u *url.URL, cfg map[string]string) (adapter.Session, error) {
-	t, err := parseTarget(u, cfg, os.Getenv)
+	t, err := parseTarget(u, cfg, os.Getenv, creds.System{})
 	if err != nil {
 		return nil, err
 	}

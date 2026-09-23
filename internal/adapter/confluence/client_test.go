@@ -10,40 +10,88 @@ import (
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence/cftest"
+	"github.com/KrzysztofBogdan/gitfs/internal/creds"
 )
 
 func env(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 
+type fakeLookup struct {
+	tokens map[string]string
+	hosts  map[string]string
+	sole   string
+}
+
+func (f fakeLookup) Token(e string) (string, error) {
+	if t, ok := f.tokens[e]; ok {
+		return t, nil
+	}
+	return "", creds.ErrNotFound
+}
+func (f fakeLookup) HostEmail(h string) (string, error) { return f.hosts[h], nil }
+func (f fakeLookup) SoleIdentity() string               { return f.sole }
+
 func TestParseTarget(t *testing.T) {
-	creds := env(map[string]string{"GFS_CONFLUENCE_TOKEN": "tok", "GFS_CONFLUENCE_EMAIL": "me@x.com"})
+	both := env(map[string]string{"GFS_CONFLUENCE_TOKEN": "tok", "GFS_CONFLUENCE_EMAIL": "me@x.com"})
+	none := env(nil)
+	const acme = "acme.atlassian.net"
 	cases := []struct {
+		name    string
 		raw     string
 		cfg     map[string]string
 		getenv  func(string) string
+		lk      fakeLookup
 		base    string
-		space   string
 		email   string
+		token   string
 		wantErr string
 	}{
-		{"confluence://acme.atlassian.net/ENG", nil, creds, "https://acme.atlassian.net", "ENG", "me@x.com", ""},
-		{"confluence://acme.atlassian.net/ENG?base=http://127.0.0.1:9", nil, creds, "http://127.0.0.1:9", "ENG", "me@x.com", ""},
-		{"confluence://u%40x.com@acme.atlassian.net/ENG", map[string]string{"base": "http://b"}, env(map[string]string{"GFS_CONFLUENCE_TOKEN": "t"}), "http://b", "ENG", "u@x.com", ""},
-		{"confluence://acme.atlassian.net/", nil, creds, "", "", "", "want confluence://<host>/<SPACEKEY>"},
-		{"confluence://acme.atlassian.net/ENG", nil, env(nil), "", "", "", "GFS_CONFLUENCE_TOKEN"},
-		{"confluence://acme.atlassian.net/ENG", nil, env(map[string]string{"GFS_CONFLUENCE_TOKEN": "t"}), "", "", "", "GFS_CONFLUENCE_EMAIL"},
+		{"env", "confluence://acme.atlassian.net/ENG", nil, both, fakeLookup{}, "https://acme.atlassian.net", "me@x.com", "tok", ""},
+		{"base query", "confluence://acme.atlassian.net/ENG?base=http://127.0.0.1:9", nil, both, fakeLookup{}, "http://127.0.0.1:9", "me@x.com", "tok", ""},
+		{"env email beats URL user", "confluence://u%40x.com@acme.atlassian.net/ENG", nil, both, fakeLookup{}, "https://acme.atlassian.net", "me@x.com", "tok", ""},
+		{"URL user, cfg base, env token", "confluence://u%40x.com@acme.atlassian.net/ENG", map[string]string{"base": "http://b"}, env(map[string]string{"GFS_CONFLUENCE_TOKEN": "t"}), fakeLookup{}, "http://b", "u@x.com", "t", ""},
+		{"URL user beats remote email", "confluence://u%40x.com@acme.atlassian.net/ENG", map[string]string{"email": "c@x.com"}, none,
+			fakeLookup{tokens: map[string]string{"u@x.com": "ut"}}, "https://acme.atlassian.net", "u@x.com", "ut", ""},
+		{"remote email beats host default", "confluence://acme.atlassian.net/ENG", map[string]string{"email": "c@x.com"}, none,
+			fakeLookup{tokens: map[string]string{"c@x.com": "ct"}, hosts: map[string]string{acme: "h@x.com"}}, "https://acme.atlassian.net", "c@x.com", "ct", ""},
+		{"host default beats sole identity", "confluence://acme.atlassian.net/ENG", nil, none,
+			fakeLookup{tokens: map[string]string{"h@x.com": "ht"}, hosts: map[string]string{acme: "h@x.com"}, sole: "s@x.com"}, "https://acme.atlassian.net", "h@x.com", "ht", ""},
+		{"sole identity", "confluence://acme.atlassian.net/ENG", nil, none,
+			fakeLookup{tokens: map[string]string{"s@x.com": "st"}, sole: "s@x.com"}, "https://acme.atlassian.net", "s@x.com", "st", ""},
+		{"env token beats store", "confluence://acme.atlassian.net/ENG", map[string]string{"email": "c@x.com"}, env(map[string]string{"GFS_CONFLUENCE_TOKEN": "envtok"}),
+			fakeLookup{tokens: map[string]string{"c@x.com": "ct"}}, "https://acme.atlassian.net", "c@x.com", "envtok", ""},
+		{"bad path", "confluence://acme.atlassian.net/", nil, both, fakeLookup{}, "", "", "", "want confluence://<host>/<SPACEKEY>"},
+		{"no identity", "confluence://acme.atlassian.net/ENG", nil, none, fakeLookup{}, "", "", "",
+			"no identity for acme.atlassian.net: run gfs auth set <email> --host acme.atlassian.net, or put the email in the URL (confluence://me%40x.com@acme.atlassian.net/ENG)"},
+		{"no token", "confluence://acme.atlassian.net/ENG", map[string]string{"email": "c@x.com"}, none, fakeLookup{}, "", "", "",
+			"no token for c@x.com: run gfs auth set c@x.com"},
 	}
 	for _, c := range cases {
 		u, _ := url.Parse(c.raw)
-		got, err := parseTarget(u, c.cfg, c.getenv)
+		got, err := parseTarget(u, c.cfg, c.getenv, c.lk)
 		if c.wantErr != "" {
 			if err == nil || !strings.Contains(err.Error(), c.wantErr) {
-				t.Errorf("%s: err %v, want %q", c.raw, err, c.wantErr)
+				t.Errorf("%s: err %v, want %q", c.name, err, c.wantErr)
 			}
 			continue
 		}
-		if err != nil || got.base != c.base || got.space != c.space || got.email != c.email {
-			t.Errorf("%s: got %+v %v", c.raw, got, err)
+		if err != nil || got.base != c.base || got.space != "ENG" || got.email != c.email || got.token != c.token {
+			t.Errorf("%s: got %+v %v", c.name, got, err)
 		}
+	}
+}
+
+func TestVerifyToken(t *testing.T) {
+	s := cftest.New()
+	defer s.Close()
+	s.Accounts = map[string]string{"me@x.com": "good"}
+	name, err := VerifyToken(context.Background(), s.URL, "me@x.com", "good")
+	if err != nil || name != "Me" {
+		t.Fatalf("got %q %v", name, err)
+	}
+	_, err = VerifyToken(context.Background(), s.URL, "me@x.com", "bad")
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.Status != 401 {
+		t.Fatalf("bad token: %v", err)
 	}
 }
 

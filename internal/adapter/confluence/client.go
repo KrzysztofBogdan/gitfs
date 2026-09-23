@@ -197,3 +197,16 @@ func writeMultipart(mw *multipart.Writer, filename string, r io.Reader) error {
 	}
 	return mw.Close()
 }
+
+// VerifyToken checks email and token against the site at base and returns
+// the account's display name.
+func VerifyToken(ctx context.Context, base, email, token string) (string, error) {
+	c := newClient(target{base: strings.TrimRight(base, "/"), email: email, token: token})
+	var u struct {
+		DisplayName string `json:"displayName"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/wiki/rest/api/user/current", nil, &u); err != nil {
+		return "", err
+	}
+	return u.DisplayName, nil
+}
