@@ -48,13 +48,21 @@ store   drafts/re-dh.xml                                    ok
 ```
 
 The draft now exists on the server, wrapped in the envelope, and `<mail>`
-gained `id` and `date` attributes. Nothing was sent. To send, set the action:
+gained `id` and `date` attributes. Nothing was sent. To attach a file, drop it into the draft's `.files/` folder; the next commit
+stores the draft with it (or sends it, if `action="send"` is set):
+
+```shell
+$ cp ~/dh-mitm.pdf drafts/re-dh.files/
+```
+
+To send, set the action:
 
 ```shell
 $ sed -i 's/^<gfs>/<gfs action="send">/' drafts/re-dh.xml
 
 $ gfs status
   M  drafts/re-dh.xml       SEND via smtp, then move to sent/        [ask]
+        with new attachment re-dh.files/dh-mitm.pdf
 
 $ gfs commit --dry-run
 send    drafts/re-dh.xml
@@ -101,6 +109,29 @@ Fix the address, `gfs commit` again. `<errors>` is dropped on the retry.
 `inbox/2026-09-15 Invoice 4411.xml` has `<body type="text/html">` with the
 provider's markup as children. gfs does not render it to text; you read or
 grep the HTML, and if you ever edit it, it goes back as HTML.
+
+## Attachments, including duplicate names
+
+Attachments are `<attachment>` elements (id = MIME part), bytes are fetched on
+demand into `<mail file name>.files/`. Mail allows two attachments with the
+same name; the file for each is derived from its name in id order, so it is
+stable: the first keeps the name, later ones get ` (2)`, ` (3)`.
+
+```xml
+<attachment id="2" name="invoice-4411.pdf" type="application/pdf" size="608"/>
+<attachment id="3" name="invoice-4411.pdf" type="application/pdf" size="620"/>
+```
+
+```shell
+$ gfs get "archive/2026/2026-09-15 Invoice 4411.xml"
+  +  archive/2026/2026-09-15 Invoice 4411.files/invoice-4411.pdf       608 B
+  +  archive/2026/2026-09-15 Invoice 4411.files/invoice-4411 (2).pdf   620 B
+```
+
+The chosen path is recorded in `.gfs/attachments`, so it never shifts. A
+received message cannot change on the server, so its attachments are
+read-only: editing one shows `!  attachments of received mail are read-only`.
+Drafts can gain, change or lose attachments; the adapter re-stores the draft.
 
 ## Moves and deletes are just moves and deletes
 

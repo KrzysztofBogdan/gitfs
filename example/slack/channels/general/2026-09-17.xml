@@ -4,6 +4,7 @@
     <messages channel="general" channel-id="C012AB3CD" date="2026-09-17" type="text/mrkdwn">
       <message ts="1758095700.000100" author="alice">Morning. Staging is red since the 06:00 build, anyone looking?</message>
       <message ts="1758096060.000300" author="bob"><![CDATA[On it. Looks like the retry change from <https://instance/browse/ABC-118561|ABC-118561>.]]>
+        <file id="F07Q2M8KD1" name="retry-backoff.png" type="image/png" size="18234"/>
         <reply ts="1758096180.000400" author="alice">Thanks. Ping me when green.</reply>
         <reply>Green now, backoff cap was 30ms instead of 30s.</reply>
       </message>

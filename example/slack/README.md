@@ -34,6 +34,23 @@ Write-back adds `ts` and `author`.
 A `<reply>` inside a `<message>` is a thread reply. New reply: `<reply>`
 without `ts`. See the pending reply in `channels/general/2026-09-17.xml`.
 
+## Files
+
+A file shared in a message is a `<file>` element inside that `<message>`
+(see bob's message in `channels/general/2026-09-17.xml`). Bytes are fetched on
+demand into the day's `.files/` folder, prefixed with the message `ts` so
+files stay grouped by message:
+
+```shell
+$ gfs get channels/general/2026-09-17.xml
+  +  channels/general/2026-09-17.files/1758096060.000300-retry-backoff.png   18 KB
+```
+
+A new file in `2026-09-17.files/` named `<ts>-<name>` is shared in that
+message's thread; without a `ts` prefix it is posted as a new message. Slack
+cannot replace a file's bytes, so editing a fetched file is an error; removing
+the `<file>` element deletes it (`ask`, your own files only).
+
 ## Formatting
 
 Message text is Slack mrkdwn, declared once on the root

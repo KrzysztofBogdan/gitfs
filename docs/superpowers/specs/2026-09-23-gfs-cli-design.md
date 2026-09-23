@@ -52,7 +52,11 @@ gfs pull   [--force] [<path>...]
 gfs resolve (--ours | --theirs) <path>...
 gfs log    [-n <count>] [<path>...]
 gfs actions
+gfs get    <path>...
 ```
+
+`gfs get` downloads attachment bytes on demand; see
+`2026-09-23-gfs-attachments-design.md`.
 
 All commands except `clone` locate the working tree by walking up from the
 current directory to the nearest `.gfs/`. Paths are relative to the current
@@ -410,6 +414,7 @@ overwrite.
   config     INI: [remote] url, adapter options; [policy] verb = allow|ask|deny
   base/      mirror of the working tree in canonical form as last synced
   index      path <-> identity <-> remote version token, one line per resource
+  attachments  fetched attachments: ids, version, sha256, size, mtime, path (attachments spec)
   log        append-only: <timestamp> <verb> <path>[ -> <path>] <ok|FAIL> <detail>
   lock       present while a command runs; commands refuse to run concurrently
 ```
@@ -491,8 +496,8 @@ The design choices that exist specifically for coding agents:
 * **Multi-remote roots.** `gfs/mail`, `gfs/jira`, `gfs/slack` under one parent
   and an agent that wants one `gfs status` for all. Deferred; each is its own
   tree for now.
-* **Attachments.** Mail attachments, Confluence attachments, Slack files.
-  `<attachment>` metadata is in the examples; fetching bytes is not designed.
+* **Attachments.** Designed in `2026-09-23-gfs-attachments-design.md`
+  (metadata elements always, bytes fetched on demand with `gfs get`).
 * **Credential storage.** Adapter-resolved; no shared design yet.
 * **Schema publication.** Whether adapters ship an XSD or RELAX NG so editors
   can validate and complete; the internal schema exists either way.

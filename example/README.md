@@ -8,10 +8,10 @@ CLI *should* feel like.
 
 | folder        | remote                          | shows                                                   |
 |---------------|---------------------------------|---------------------------------------------------------|
-| `mail/`       | `imap+smtp://kbogdan@dwa.ovh`   | store vs. send, the `<gfs>` envelope with `action` and `<errors>`, a failed send, an HTML mail kept as HTML |
+| `mail/`       | `imap+smtp://kbogdan@dwa.ovh`   | store vs. send, the `<gfs>` envelope with `action` and `<errors>`, a failed send, an HTML mail kept as HTML, attachments with duplicate names |
 | `jira/abc/`   | `jira://instance/ABC`           | create by new file, comments and worklog as child elements, transition by editing `<status>`, pull merging into pending work |
-| `slack/`      | `slack://warsawdynamics`        | post by adding a `<message>`, threads, day files        |
-| `confluence/` | `confluence://instance/ENG`     | storage format untouched, version lock, a real merge conflict with `<conflict/>` in the envelope |
+| `slack/`      | `slack://warsawdynamics`        | post by adding a `<message>`, threads, day files, shared files |
+| `confluence/` | `confluence://instance/ENG`     | storage format untouched, version lock, a real merge conflict with `<conflict/>` in the envelope, attachments fetched on demand and a binary conflict |
 | `dns/`        | `cloudflare://example.com`      | records as elements, provider flags as attributes       |
 | `x/`          | `x://@kbogdan`                  | irreversible create, `--dry-run`                        |
 
@@ -87,6 +87,28 @@ everything `allow` except `send`, `delete`, `publish` which are `ask`. On a
 non-TTY `ask` behaves as `deny`. `gfs commit --allow send` overrides for one
 run, so an agent's permission system can permit `gfs commit` and deny
 `gfs commit --allow`.
+
+### Attachments
+
+Binary content (page attachments, mail attachments, Slack files) is never
+downloaded by `clone` or `pull`. The resource file always lists it as
+elements with service-owned attributes (`<attachment id= name= type= size=
+version=>`); `gfs get <path>` downloads bytes into a sidecar folder next to
+the resource, `X.files/` for `X.xml`.
+
+* **The XML decides existence, the bytes are a local copy.** Removing the
+  element deletes on the remote (`ask`); deleting only the bytes evicts the
+  copy and sends nothing.
+* **Fetched means tracked.** `.gfs/attachments` records, per fetched
+  attachment, the version and sha256 as fetched. From then on `pull` refreshes
+  it and `commit` uploads local changes. Unfetched attachments are never
+  touched.
+* **New file in `X.files/`** uploads it (create); gfs writes the element back.
+* **Binaries do not merge.** Changed on both sides: pull keeps yours and writes
+  `name.remote-v<N>.ext` next to it, status shows `C`, `gfs resolve
+  --ours|--theirs <file>` picks one.
+* Status lists attachments by their file path:
+  `M  eng/Home/Runbooks.files/rollback-flow.png   upload new version of attachment (v2)`.
 
 ### Status letters
 

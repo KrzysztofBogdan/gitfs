@@ -7,6 +7,8 @@
         <p>Operational procedures. One page per procedure below.</p>
         <ac:structured-macro ac:name="children" ac:schema-version="2" ac:macro-id="5d6e7f80-91a2-4b3c-8d4e-5f6a7b8c9d0e"/>
       </body>
+      <attachment id="att98231" name="rollback-flow.png" type="image/png" size="74" version="2" created="2026-03-02T09:15:00+01:00" author="kbogdan"/>
+      <attachment id="att98232" name="runbook-template.pdf" type="application/pdf" size="88312" version="1" created="2026-01-20T11:31:00+01:00" author="alice"/>
     </page>
   </content>
 </gfs>

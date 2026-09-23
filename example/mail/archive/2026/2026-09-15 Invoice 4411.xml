@@ -8,7 +8,7 @@
       <body type="text/html">
         <html>
           <body style="font-family: sans-serif">
-            <p>Your invoice <b>4411</b> is attached.</p>
+            <p>Your invoice <b>4411</b> is attached. The second copy corrects the due date.</p>
             <table border="1" cellpadding="4">
               <tr><td>Net</td><td align="right">1 200,00 PLN</td></tr>
               <tr><td>VAT 23%</td><td align="right">276,00 PLN</td></tr>
@@ -18,7 +18,8 @@
           </body>
         </html>
       </body>
-      <attachment id="1" name="invoice-4411.pdf" type="application/pdf" size="48211"/>
+      <attachment id="2" name="invoice-4411.pdf" type="application/pdf" size="608"/>
+      <attachment id="3" name="invoice-4411.pdf" type="application/pdf" size="620"/>
     </mail>
   </content>
 </gfs>
