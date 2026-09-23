@@ -129,3 +129,7 @@ type Session interface {
 	Download(ctx context.Context, resourceID, attachmentID string, w io.Writer) (AttachmentInfo, error)
 	Close() error
 }
+
+// Identified is implemented by sessions that know which account they act as.
+// Clone records the identity as [remote] email (credentials spec §6).
+type Identified interface{ Identity() string }

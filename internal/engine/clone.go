@@ -13,6 +13,9 @@ import (
 func Clone(ctx context.Context, ad adapter.Adapter, sess adapter.Session, rawURL, dir string, out io.Writer) (*Env, error) {
 	cfg := workdir.NewConfig()
 	cfg.Set("remote", "url", rawURL)
+	if id, ok := sess.(adapter.Identified); ok && id.Identity() != "" {
+		cfg.Set("remote", "email", id.Identity())
+	}
 	t, err := workdir.Init(dir, cfg)
 	if err != nil {
 		return nil, err
