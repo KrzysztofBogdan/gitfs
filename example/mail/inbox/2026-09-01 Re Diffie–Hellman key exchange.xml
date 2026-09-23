@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <mail id="1873" message-id="&lt;9f3c2a@example.com&gt;" date="2026-09-01T10:14:02+02:00">
+      <from>Bob &lt;bob@example.com&gt;</from>
+      <to>kbogdan@dwa.ovh</to>
+      <cc>alice@example.com</cc>
+      <subject>Re: Diffie–Hellman key exchange</subject>
+      <body type="text/plain">Hi Carol,
+
+I moved the key exchange to the handshake step, but I'm not sure
+we need to sign g^a at all. Isn't the shared secret enough?
+
+Bob</body>
+    </mail>
+  </content>
+</gfs>

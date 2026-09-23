@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <page id="98001" version="3" created="2025-11-02T10:00:00+01:00" updated="2026-06-14T12:31:00+02:00">
+      <title>Home</title>
+      <labels>
+        <label>index</label>
+      </labels>
+      <body type="application/xhtml+xml" xmlns:ac="http://atlassian.com/content" xmlns:ri="http://atlassian.com/resource/identifier">
+        <p>Engineering space. Start with <ac:link><ri:page ri:content-title="Architecture"/></ac:link>, then <ac:link><ri:page ri:content-title="Runbooks"/></ac:link>.</p>
+        <ac:structured-macro ac:name="children" ac:schema-version="2" ac:macro-id="0b1e2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d">
+          <ac:parameter ac:name="depth">2</ac:parameter>
+        </ac:structured-macro>
+      </body>
+    </page>
+  </content>
+</gfs>

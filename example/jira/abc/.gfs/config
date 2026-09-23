@@ -1,0 +1,5 @@
+[remote]
+url = jira://instance/ABC
+
+[policy]
+delete = ask

@@ -1,0 +1,3 @@
+2026-09-17T09:02:30+02:00 store   drafts/re-dh.xml                                   ok   id=2201
+2026-09-17T09:11:02+02:00 send    drafts/to-typo.xml                                 FAIL 550 5.1.1 <bobb@example.com>: Recipient address rejected
+2026-09-17T09:11:02+02:00 store   drafts/to-typo.xml                                 ok   id=2202

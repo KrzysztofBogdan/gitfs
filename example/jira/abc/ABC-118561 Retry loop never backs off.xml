@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <issue key="ABC-118561" id="40311" reporter="alice" created="2026-09-01T09:30:00+02:00" updated="2026-09-02T09:12:00+02:00">
+      <summary>Retry loop never backs off</summary>
+      <type>Bug</type>
+      <status>Done</status>
+      <priority>High</priority>
+      <assignee>kbogdan</assignee>
+      <labels>
+        <label>backend</label>
+        <label>p1</label>
+      </labels>
+      <body type="application/xhtml+xml">
+        <p>The HTTP client retries immediately after a failure. Under load this turns a
+    single upstream hiccup into a self-inflicted outage.</p>
+        <p><strong>Expected:</strong> exponential backoff with jitter, capped at 30s.</p>
+      </body>
+      <worklog id="4402" author="kbogdan" started="2026-09-01T11:00:00+02:00" spent="1h">Reproduced locally with a failing upstream stub.</worklog>
+      <worklog spent="2h">Implemented backoff, added tests.</worklog>
+      <comment id="10023" author="alice" created="2026-09-01T10:00:00+02:00">
+        <p>Looks good, but the retry loop never backs off. See the trace in the attached log.</p>
+      </comment>
+      <comment id="10031" author="bob" created="2026-09-02T09:12:00+02:00">
+        <p>Fixed in <code>4f2a9c1</code>.</p>
+      </comment>
+      <comment>Verified on staging, closing.</comment>
+    </issue>
+  </content>
+</gfs>

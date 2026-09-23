@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs action="send">
+  <content>
+    <mail id="2201" date="2026-09-17T09:02:11+02:00">
+      <from>kbogdan@dwa.ovh</from>
+      <to>bob@example.com</to>
+      <cc>alice@example.com</cc>
+      <subject>Re: Diffie–Hellman key exchange</subject>
+      <body type="text/plain">Hello Bob,
+
+The shared secret is fine, the problem is that we never authenticate g^a.
+Without a signature anyone in the middle can substitute their own.
+
+Thanks,
+Carol</body>
+    </mail>
+  </content>
+</gfs>

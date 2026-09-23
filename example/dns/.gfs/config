@@ -1,0 +1,5 @@
+[remote]
+url = cloudflare://example.com
+
+[policy]
+delete = ask

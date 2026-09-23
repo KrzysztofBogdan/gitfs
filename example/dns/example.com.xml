@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <zone id="023e105f4ecef8ad9ca31a8372d0c353" name="example.com" updated="2026-09-17T09:00:12+02:00">
+      <record id="7b2c0d1e2f3a4b5c6d7e8f9a0b1c2d3e" type="NS" name="@" ttl="300">ns1.cloudflare.com.</record>
+      <record id="8c3d1e2f3a4b5c6d7e8f9a0b1c2d3e4f" type="NS" name="@" ttl="300">ns2.cloudflare.com.</record>
+      <record id="a1f0e2d3c4b5a6978877665544332211" type="A" name="@" ttl="300" proxied="true">203.0.113.11</record>
+      <record id="b2e1f3a4d5c6b7a8998877665544332f" type="MX" name="@" ttl="300" priority="10">mx1.mail-provider.net.</record>
+      <record id="c3f2a4b5e6d7c8b9aa9988776655443a" type="TXT" name="@" ttl="300">v=spf1 include:mail-provider.net -all</record>
+      <record id="d4a3b5c6f7e8d9caabaa99887766554b" type="TXT" name="_dmarc" ttl="300">v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com</record>
+      <record id="e5b4c6d7a8f9eadbbcbbaa9988776655" type="A" name="api" ttl="300">203.0.113.20</record>
+      <record type="CNAME" name="status" ttl="300">statuspage.io.</record>
+      <record id="f6c5d7e8b9a0fbeccdccbbaa99887766" type="CNAME" name="www" ttl="300" proxied="true">example.com.</record>
+    </zone>
+  </content>
+</gfs>

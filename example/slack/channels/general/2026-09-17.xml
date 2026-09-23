@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <messages channel="general" channel-id="C012AB3CD" date="2026-09-17" type="text/mrkdwn">
+      <message ts="1758095700.000100" author="alice">Morning. Staging is red since the 06:00 build, anyone looking?</message>
+      <message ts="1758096060.000300" author="bob"><![CDATA[On it. Looks like the retry change from <https://instance/browse/ABC-118561|ABC-118561>.]]>
+        <reply ts="1758096180.000400" author="alice">Thanks. Ping me when green.</reply>
+        <reply>Green now, backoff cap was 30ms instead of 30s.</reply>
+      </message>
+      <message ts="1758098400.000200" author="kbogdan">*Reminder:* retro at 15:00.</message>
+      <message>Deploying 2.4 to staging in 10 minutes.</message>
+    </messages>
+  </content>
+</gfs>

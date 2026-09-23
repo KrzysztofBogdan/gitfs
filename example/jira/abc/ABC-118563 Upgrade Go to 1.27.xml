@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <issue key="ABC-118563" id="40313" reporter="kbogdan" created="2026-09-05T11:20:00+02:00" updated="2026-09-16T08:45:00+02:00">
+      <summary>Upgrade Go to 1.27</summary>
+      <type>Task</type>
+      <status>In Progress</status>
+      <priority>Low</priority>
+      <assignee>alice</assignee>
+      <body type="application/xhtml+xml">
+        <p>Bump toolchain, fix vet warnings, verify the race detector still passes.</p>
+      </body>
+      <comment id="10040" author="kbogdan" created="2026-09-16T08:45:00+02:00">
+        <p>Blocked on the CI image; opened <a href="https://instance/browse/INFRA-221">INFRA-221</a>.</p>
+      </comment>
+    </issue>
+  </content>
+</gfs>

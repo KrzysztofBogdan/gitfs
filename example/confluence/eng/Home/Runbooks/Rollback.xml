@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <page>
+      <title>Rollback</title>
+      <labels><label>runbook</label><label>release</label></labels>
+      <body type="application/xhtml+xml" xmlns:ac="http://atlassian.com/content" xmlns:ri="http://atlassian.com/resource/identifier">
+        <ol>
+          <li>Announce in <a href="https://warsawdynamics.slack.com/archives/C012AB3CD">#general</a>.</li>
+          <li>Redeploy previous tag:
+            <ac:structured-macro ac:name="code" ac:schema-version="1">
+              <ac:parameter ac:name="language">bash</ac:parameter>
+              <ac:plain-text-body><![CDATA[./deploy.sh --tag v2.3.1]]></ac:plain-text-body>
+            </ac:structured-macro>
+          </li>
+          <li>Verify SLO dashboard for 15 minutes.</li>
+        </ol>
+      </body>
+    </page>
+  </content>
+</gfs>

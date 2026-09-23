@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <mail id="1901" message-id="&lt;c0ffee@dwa.ovh&gt;" date="2026-09-10T16:40:00+02:00">
+      <from>kbogdan@dwa.ovh</from>
+      <to>team@example.com</to>
+      <subject>Release 2.4 checklist</subject>
+      <body type="text/plain">- [x] changelog
+- [x] tag
+- [ ] announce
+
+--
+Sent from dwa.ovh mail</body>
+    </mail>
+  </content>
+</gfs>

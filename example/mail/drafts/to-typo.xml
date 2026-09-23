@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs action="send">
+  <errors>
+    <error action="send" code="550" at="2026-09-17T09:11:02+02:00">
+      <msg>550 5.1.1 &lt;bobb@example.com&gt;: Recipient address rejected</msg>
+    </error>
+  </errors>
+  <content>
+    <mail id="2202" date="2026-09-17T09:10:40+02:00">
+      <from>kbogdan@dwa.ovh</from>
+      <to>bobb@example.com</to>
+      <subject>Meeting notes</subject>
+      <body type="text/plain"><![CDATA[Notes from today:
+
+- retry budget < 3 per request
+- backoff cap 30s, jitter on
+- Q&A moved to Thursday]]></body>
+    </mail>
+  </content>
+</gfs>

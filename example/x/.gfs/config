@@ -1,0 +1,6 @@
+[remote]
+url = x://@kbogdan
+
+[policy]
+publish = ask
+delete = ask

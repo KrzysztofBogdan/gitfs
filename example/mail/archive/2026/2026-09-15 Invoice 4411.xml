@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <mail id="1899" message-id="&lt;inv4411@billing.example.net&gt;" date="2026-09-15T08:00:00+02:00">
+      <from>billing@example.net</from>
+      <to>kbogdan@dwa.ovh</to>
+      <subject>Invoice 4411</subject>
+      <body type="text/html">
+        <html>
+          <body style="font-family: sans-serif">
+            <p>Your invoice <b>4411</b> is attached.</p>
+            <table border="1" cellpadding="4">
+              <tr><td>Net</td><td align="right">1 200,00 PLN</td></tr>
+              <tr><td>VAT 23%</td><td align="right">276,00 PLN</td></tr>
+              <tr><td><b>Total</b></td><td align="right"><b>1 476,00 PLN</b></td></tr>
+            </table>
+            <p style="color: #888">This is an automated message.</p>
+          </body>
+        </html>
+      </body>
+      <attachment id="1" name="invoice-4411.pdf" type="application/pdf" size="48211"/>
+    </mail>
+  </content>
+</gfs>

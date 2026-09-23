@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <page id="98130" version="2" parent="98001" created="2026-01-20T11:00:00+01:00" updated="2026-01-20T11:30:00+01:00">
+      <title>Runbooks</title>
+      <body type="application/xhtml+xml" xmlns:ac="http://atlassian.com/content" xmlns:ri="http://atlassian.com/resource/identifier">
+        <p>Operational procedures. One page per procedure below.</p>
+        <ac:structured-macro ac:name="children" ac:schema-version="2" ac:macro-id="5d6e7f80-91a2-4b3c-8d4e-5f6a7b8c9d0e"/>
+      </body>
+    </page>
+  </content>
+</gfs>

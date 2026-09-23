@@ -1,0 +1,5 @@
+[remote]
+url = confluence://instance/ENG
+
+[policy]
+delete = ask

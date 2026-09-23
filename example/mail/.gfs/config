@@ -1,0 +1,6 @@
+[remote]
+url = imap+smtp://kbogdan@dwa.ovh
+
+[policy]
+send = ask
+delete = ask
