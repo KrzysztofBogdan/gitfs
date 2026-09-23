@@ -193,12 +193,16 @@ func newAuthList() *cobra.Command {
 				fmt.Fprintln(out, "no stored tokens")
 				return nil
 			}
+			width := 0
+			for _, id := range ids {
+				width = max(width, len(creds.Realm)+1+len(id.Email))
+			}
 			for _, id := range ids {
 				src := id.Source
 				if id.Missing {
 					src += " (missing)"
 				}
-				line := fmt.Sprintf("%-28s %-14s", creds.Realm+":"+id.Email, src)
+				line := fmt.Sprintf("%-*s  %-14s", width, creds.Realm+":"+id.Email, src)
 				if hosts := g.HostsFor(id.Email); len(hosts) > 0 {
 					line += " default for " + strings.Join(hosts, ", ")
 				}
