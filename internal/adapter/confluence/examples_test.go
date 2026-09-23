@@ -83,17 +83,25 @@ func TestStorageCatalogue(t *testing.T) {
 	if len(ex) == 0 {
 		t.Fatal("no examples found")
 	}
-	got := RenderCatalogue(ex, rejected, readStatus(t))
-	path := filepath.Join(docsDir, "storage.md")
-	if *update {
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
+	v, err := BuildVocabulary(ex, rejected)
+	if err != nil {
+		t.Fatal(err)
 	}
-	want, _ := os.ReadFile(path)
-	if string(want) != got {
-		t.Fatal("docs/confluence/storage.md is stale: go test ./internal/adapter/confluence -run TestStorageCatalogue -update")
+	generated := map[string]string{
+		filepath.Join(docsDir, "storage.md"):  RenderCatalogue(ex, rejected, readStatus(t)),
+		filepath.Join(docsDir, "storage.rng"): v.RelaxNG(),
+		"vocabulary.json":                     string(v.JSON()),
+	}
+	for path, got := range generated {
+		if *update {
+			if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if want, _ := os.ReadFile(path); string(want) != got {
+			t.Errorf("%s is stale: go test ./internal/adapter/confluence -run TestStorageCatalogue -update", path)
+		}
 	}
 }
 

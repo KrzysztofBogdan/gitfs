@@ -24,6 +24,7 @@ type FileChange struct {
 	Err           error
 	Attachments   []AttChange // attachment status of this resource (attachments spec 3.4)
 	Quiet         bool        // the resource file itself is unchanged; only attachments changed
+	Warnings      []string    // adapter lint findings new in this version of the file
 }
 
 func Compute(t *workdir.Tree, ix *workdir.Index, ad adapter.Adapter, filter func(string) bool) ([]FileChange, error) {
@@ -121,6 +122,7 @@ func Compute(t *workdir.Tree, ix *workdir.Index, ad adapter.Adapter, filter func
 			}
 		}
 		fc.Err = validate.Resource(doc.Content, baseContent, s)
+		fc.Warnings = newWarnings(ad, doc.Content, baseContent)
 		fc.Actions = append(ResolveActions(ad, baseContent, doc, basePath, p), attachmentActions(fc.Attachments)...)
 		out = append(out, fc)
 	}
@@ -188,4 +190,25 @@ func PathFilter(t *workdir.Tree, args []string) (func(string) bool, error) {
 		}
 		return false
 	}, nil
+}
+
+// newWarnings lints the local content and keeps what the base did not already have.
+func newWarnings(ad adapter.Adapter, local, base *xmltree.Node) []string {
+	l, ok := ad.(adapter.Linter)
+	if !ok || local == nil {
+		return nil
+	}
+	old := map[string]bool{}
+	if base != nil {
+		for _, w := range l.Lint(base) {
+			old[w] = true
+		}
+	}
+	var out []string
+	for _, w := range l.Lint(local) {
+		if !old[w] {
+			out = append(out, w)
+		}
+	}
+	return out
 }

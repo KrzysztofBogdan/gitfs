@@ -1,2 +1,2 @@
-<!-- data-number-column on a table: dropped -->
+<!-- the numbered first column of a table cannot be set through storage format -->
 <table data-layout="default" data-number-column="true"><tbody><tr><td><p>1</p></td></tr></tbody></table>

@@ -106,6 +106,9 @@ func printResource(w io.Writer, c changes.FileChange, pol *policy.Policy) {
 		detail = strings.TrimSpace(detail + "  (" + c.Note + ")")
 	}
 	fmt.Fprintf(w, "  %c  %-40s %s\n", c.Status, p, detail)
+	for _, warn := range c.Warnings {
+		fmt.Fprintf(w, "        warning: %s\n", warn)
+	}
 	if len(acts) > 1 && c.Err == nil {
 		for _, a := range acts {
 			fmt.Fprintf(w, "        %s%s\n", a.Detail, mark(pol, a))

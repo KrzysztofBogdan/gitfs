@@ -1,0 +1,233 @@
+{
+  "elements": {
+    "a": [
+      "data-card-appearance",
+      "data-layout",
+      "data-width",
+      "href"
+    ],
+    "ac:adf-attribute": [
+      "key"
+    ],
+    "ac:adf-content": [],
+    "ac:adf-extension": [],
+    "ac:adf-node": [
+      "type"
+    ],
+    "ac:emoticon": [
+      "ac:emoji-fallback",
+      "ac:emoji-id",
+      "ac:emoji-shortname",
+      "ac:name"
+    ],
+    "ac:image": [
+      "ac:align",
+      "ac:alt",
+      "ac:border",
+      "ac:height",
+      "ac:inline",
+      "ac:layout",
+      "ac:width"
+    ],
+    "ac:layout": [],
+    "ac:layout-cell": [],
+    "ac:layout-section": [
+      "ac:breakout-mode",
+      "ac:type"
+    ],
+    "ac:link": [
+      "ac:anchor"
+    ],
+    "ac:parameter": [
+      "ac:name"
+    ],
+    "ac:placeholder": [],
+    "ac:plain-text-body": [],
+    "ac:plain-text-link-body": [],
+    "ac:rich-text-body": [],
+    "ac:structured-macro": [
+      "ac:name",
+      "ac:schema-version"
+    ],
+    "ac:task": [],
+    "ac:task-body": [],
+    "ac:task-id": [],
+    "ac:task-list": [],
+    "ac:task-status": [],
+    "blockquote": [],
+    "br": [],
+    "code": [],
+    "col": [
+      "style"
+    ],
+    "colgroup": [],
+    "em": [],
+    "h1": [],
+    "h2": [
+      "style"
+    ],
+    "h3": [
+      "style"
+    ],
+    "h4": [],
+    "h5": [],
+    "h6": [],
+    "hr": [],
+    "li": [],
+    "ol": [
+      "start"
+    ],
+    "p": [
+      "style"
+    ],
+    "ri:attachment": [
+      "ri:filename"
+    ],
+    "ri:page": [
+      "ri:content-title"
+    ],
+    "ri:space": [
+      "ri:space-key"
+    ],
+    "ri:url": [
+      "ri:value"
+    ],
+    "ri:user": [
+      "ri:account-id"
+    ],
+    "s": [],
+    "span": [
+      "style"
+    ],
+    "strong": [],
+    "sub": [],
+    "sup": [],
+    "table": [
+      "data-layout"
+    ],
+    "tbody": [],
+    "td": [
+      "colspan",
+      "data-highlight-colour",
+      "rowspan"
+    ],
+    "th": [
+      "colspan"
+    ],
+    "time": [
+      "datetime"
+    ],
+    "tr": [],
+    "u": [],
+    "ul": []
+  },
+  "macros": {
+    "anchor": [
+      ""
+    ],
+    "attachments": [
+      "upload"
+    ],
+    "children": [
+      "all",
+      "sort"
+    ],
+    "code": [
+      "collapse",
+      "language",
+      "linenumbers",
+      "theme",
+      "title"
+    ],
+    "column": [
+      "width"
+    ],
+    "contentbylabel": [
+      "cql"
+    ],
+    "details": [
+      "id"
+    ],
+    "detailssummary": [
+      "cql"
+    ],
+    "excerpt": [
+      "name"
+    ],
+    "excerpt-include": [
+      "",
+      "nopanel"
+    ],
+    "expand": [
+      "title"
+    ],
+    "gallery": [
+      "columns"
+    ],
+    "include": [
+      ""
+    ],
+    "info": [],
+    "jira": [
+      "jqlQuery",
+      "maximumIssues"
+    ],
+    "livesearch": [
+      "spaceKey"
+    ],
+    "noformat": [],
+    "note": [],
+    "pagetree": [
+      "expandCollapseAll",
+      "root"
+    ],
+    "panel": [
+      "bgColor",
+      "panelIcon",
+      "panelIconId",
+      "panelIconText"
+    ],
+    "profile": [
+      "user"
+    ],
+    "recently-updated": [
+      "max"
+    ],
+    "section": [],
+    "status": [
+      "colour",
+      "subtle",
+      "title"
+    ],
+    "tasks-report-macro": [
+      "spaces",
+      "status"
+    ],
+    "tip": [],
+    "toc": [
+      "maxLevel",
+      "minLevel"
+    ],
+    "view-file": [
+      "name"
+    ],
+    "warning": []
+  },
+  "adf": {
+    "decision-item": [
+      "local-id",
+      "state"
+    ],
+    "decision-list": [
+      "local-id"
+    ],
+    "panel": [
+      "panel-type"
+    ]
+  },
+  "dropped": {
+    "ac:structured-macro@ac:breakout-mode": "code blocks and expands cannot be made wide or full-width through storage format",
+    "span@data-highlight-colour": "for a text highlight write \u003cspan style=\"background-color: rgb(…)\"\u003e (see marks/background-color)",
+    "table@data-number-column": "the numbered first column of a table cannot be set through storage format"
+  }
+}

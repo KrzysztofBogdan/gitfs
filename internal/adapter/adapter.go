@@ -133,3 +133,9 @@ type Session interface {
 // Identified is implemented by sessions that know which account they act as.
 // Clone records the identity as [remote] email (credentials spec §6).
 type Identified interface{ Identity() string }
+
+// Linter is implemented by adapters that can warn about content the service
+// is not known to store unchanged (storage reference spec §3.2).
+type Linter interface {
+	Lint(root *xmltree.Node) []string
+}

@@ -120,6 +120,9 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 // precheck reports attachment conflicts and refusals, then handles C, invalid
 // and no-op files. It returns false when the file is done.
 func (e *Env) precheck(fc changes.FileChange, r *Report) bool {
+	for _, w := range fc.Warnings {
+		fmt.Fprintf(e.Out, "warning: %s: %s\n", fc.Path, w)
+	}
 	for _, a := range fc.Attachments {
 		switch a.Status {
 		case 'C':

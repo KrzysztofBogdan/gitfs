@@ -148,3 +148,25 @@ func TestConfluenceStoredToken(t *testing.T) {
 	t.Chdir(filepath.Join(home, "wt"))
 	mustRun(t, 0, "pull")
 }
+
+// Lint warnings show in status and commit, only for problems new in the edit.
+func TestConfluenceLintWarnings(t *testing.T) {
+	srv := cftest.New()
+	defer srv.Close()
+	srv.AddSpace("ENG", "100")
+	srv.AddPage(cftest.Page{ID: "98001", Title: "Home", SpaceID: "100", Storage: `<p>x</p><blink>old</blink>`})
+	t.Setenv("GFS_CONFLUENCE_TOKEN", "t")
+	t.Setenv("GFS_CONFLUENCE_EMAIL", "me@x.com")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustRun(t, 0, "clone", "confluence://acme.atlassian.net/ENG?base="+srv.URL, "wt")
+	t.Chdir(filepath.Join(dir, "wt"))
+	replaceIn(t, "eng/Home.xml", "<p>x</p>", `<p><span data-highlight-colour="#f8e6a0">x</span></p>`)
+	out := mustRun(t, 0, "status")
+	mustContain(t, out, "warning: <span data-highlight-colour>: Confluence drops this")
+	if strings.Contains(out, "blink") {
+		t.Fatalf("a problem already on the remote must not warn:\n%s", out)
+	}
+	out = mustRun(t, 0, "commit", "--dry-run")
+	mustContain(t, out, "warning: eng/Home.xml: <span data-highlight-colour>: Confluence drops this")
+}

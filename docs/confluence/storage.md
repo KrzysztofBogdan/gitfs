@@ -1455,7 +1455,7 @@ Confluence drops or rewrites these; do not write them.
 
 ### code-breakout
 
-ac:breakout-mode on a code macro: dropped
+code blocks and expands cannot be made wide or full-width through storage format
 
 ```xml
 <ac:structured-macro ac:name="code" ac:schema-version="1" ac:breakout-mode="wide">
@@ -1465,7 +1465,7 @@ ac:breakout-mode on a code macro: dropped
 
 ### expand-breakout
 
-ac:breakout-mode on an expand macro: dropped
+code blocks and expands cannot be made wide or full-width through storage format
 
 ```xml
 <ac:structured-macro ac:name="expand" ac:schema-version="1" ac:breakout-mode="wide">
@@ -1478,7 +1478,7 @@ ac:breakout-mode on an expand macro: dropped
 
 ### highlight-span
 
-text highlight as data-highlight-colour on a span: Confluence drops the attribute
+for a text highlight write <span style="background-color: rgb(…)"> (see marks/background-color)
 
 ```xml
 <p>
@@ -1488,7 +1488,7 @@ text highlight as data-highlight-colour on a span: Confluence drops the attribut
 
 ### table-number-column
 
-data-number-column on a table: dropped
+the numbered first column of a table cannot be set through storage format
 
 ```xml
 <table data-layout="default" data-number-column="true">

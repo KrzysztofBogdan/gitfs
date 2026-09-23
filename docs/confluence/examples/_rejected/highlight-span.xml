@@ -1,2 +1,2 @@
-<!-- text highlight as data-highlight-colour on a span: Confluence drops the attribute -->
+<!-- for a text highlight write <span style="background-color: rgb(…)"> (see marks/background-color) -->
 <p><span data-highlight-colour="#f8e6a0">yellow</span></p>
