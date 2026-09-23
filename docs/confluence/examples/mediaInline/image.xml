@@ -1,0 +1,2 @@
+<!-- inline image in text -->
+<p>before <ac:image ac:inline="true" ac:height="16"><ri:attachment ri:filename="gradient.png"/></ac:image> after</p>

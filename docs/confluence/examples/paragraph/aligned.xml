@@ -1,0 +1,2 @@
+<!-- paragraph alignment: center and end -->
+<p style="text-align: center;">Centered paragraph.</p><p style="text-align: right;">Right-aligned paragraph.</p>

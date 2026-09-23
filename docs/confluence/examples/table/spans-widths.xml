@@ -1,0 +1,2 @@
+<!-- wide layout, column widths, colspan and rowspan -->
+<table data-layout="wide"><colgroup><col style="width: 120.0px;"/><col style="width: 360.0px;"/><col style="width: 240.0px;"/></colgroup><tbody><tr><th><p>A</p></th><th colspan="2"><p>colspan 2</p></th></tr><tr><td rowspan="2"><p>rowspan 2</p></td><td><p>a</p></td><td><p>b</p></td></tr><tr><td colspan="2"><p>colspan 2</p></td></tr></tbody></table>

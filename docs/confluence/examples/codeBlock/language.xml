@@ -1,0 +1,6 @@
+<!-- code block with language, escaping-sensitive content -->
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body><![CDATA[package main
+
+import "fmt"
+
+func main() { fmt.Println("<hello & goodbye>") }]]></ac:plain-text-body></ac:structured-macro>

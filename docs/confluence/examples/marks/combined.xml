@@ -1,0 +1,2 @@
+<!-- combined marks and marks inside links -->
+<p><strong><em>strong em</em></strong> <strong><u><s>strong underline strike</s></u></strong> <a href="https://www.atlassian.com"><strong>bold link</strong></a> <a href="https://www.atlassian.com"><code>code link</code></a></p>

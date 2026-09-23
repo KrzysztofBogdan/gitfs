@@ -1,0 +1,2 @@
+<!-- page tree from the space home -->
+<ac:structured-macro ac:name="pagetree" ac:schema-version="1"><ac:parameter ac:name="root"><ac:link><ri:page ri:content-title="@home"/></ac:link></ac:parameter><ac:parameter ac:name="expandCollapseAll">true</ac:parameter></ac:structured-macro>

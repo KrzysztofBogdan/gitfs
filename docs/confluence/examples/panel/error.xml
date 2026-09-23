@@ -1,0 +1,2 @@
+<!-- error panel -->
+<ac:adf-extension><ac:adf-node type="panel"><ac:adf-attribute key="panel-type">error</ac:adf-attribute><ac:adf-content><p>error</p></ac:adf-content></ac:adf-node></ac:adf-extension>

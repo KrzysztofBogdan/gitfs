@@ -1,0 +1,2 @@
+<!-- wide layout with panel and table -->
+<ac:layout><ac:layout-section ac:type="two_equal" ac:breakout-mode="wide"><ac:layout-cell><ac:structured-macro ac:name="info" ac:schema-version="1"><ac:rich-text-body><p>panel in layout</p></ac:rich-text-body></ac:structured-macro></ac:layout-cell><ac:layout-cell><table><tbody><tr><td><p>table in layout</p></td></tr></tbody></table></ac:layout-cell></ac:layout-section></ac:layout>

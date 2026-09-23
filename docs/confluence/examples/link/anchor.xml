@@ -1,0 +1,2 @@
+<!-- anchor macro and a link to it -->
+<p><ac:structured-macro ac:name="anchor" ac:schema-version="1"><ac:parameter ac:name="">anchor-target</ac:parameter></ac:structured-macro>Anchor target.</p><p><ac:link ac:anchor="anchor-target"><ac:plain-text-link-body><![CDATA[jump to the anchor]]></ac:plain-text-link-body></ac:link></p>

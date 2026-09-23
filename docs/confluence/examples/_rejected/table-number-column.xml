@@ -1,0 +1,2 @@
+<!-- data-number-column on a table: dropped -->
+<table data-layout="default" data-number-column="true"><tbody><tr><td><p>1</p></td></tr></tbody></table>

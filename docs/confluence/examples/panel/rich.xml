@@ -1,0 +1,2 @@
+<!-- panel with list, task and code inside -->
+<ac:structured-macro ac:name="info" ac:schema-version="1"><ac:rich-text-body><ul><li><p>list</p></li></ul><ac:task-list><ac:task><ac:task-id>6</ac:task-id><ac:task-status>incomplete</ac:task-status><ac:task-body>task</ac:task-body></ac:task></ac:task-list><ac:structured-macro ac:name="code" ac:schema-version="1"><ac:plain-text-body><![CDATA[code in a panel]]></ac:plain-text-body></ac:structured-macro></ac:rich-text-body></ac:structured-macro>

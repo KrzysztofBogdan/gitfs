@@ -1,0 +1,2 @@
+<!-- expand with panel and table inside -->
+<ac:structured-macro ac:name="expand" ac:schema-version="1"><ac:parameter ac:name="title">Rich</ac:parameter><ac:rich-text-body><ac:structured-macro ac:name="note" ac:schema-version="1"><ac:rich-text-body><p>panel</p></ac:rich-text-body></ac:structured-macro><table><tbody><tr><th><p>a</p></th></tr><tr><td><p>1</p></td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>

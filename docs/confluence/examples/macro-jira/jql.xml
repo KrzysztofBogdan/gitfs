@@ -1,0 +1,2 @@
+<!-- Jira issues by JQL (needs a linked Jira site) -->
+<ac:structured-macro ac:name="jira" ac:schema-version="1"><ac:parameter ac:name="jqlQuery">project = HF ORDER BY created DESC</ac:parameter><ac:parameter ac:name="maximumIssues">5</ac:parameter></ac:structured-macro>

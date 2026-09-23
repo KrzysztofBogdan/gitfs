@@ -1,0 +1,2 @@
+<!-- excerpt include from a page -->
+<ac:structured-macro ac:name="excerpt-include" ac:schema-version="1"><ac:parameter ac:name=""><ac:link><ri:page ri:content-title="Handoff Home"/></ac:link></ac:parameter><ac:parameter ac:name="nopanel">true</ac:parameter></ac:structured-macro>

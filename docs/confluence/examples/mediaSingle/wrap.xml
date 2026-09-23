@@ -1,0 +1,2 @@
+<!-- wrap left and right -->
+<ac:image ac:layout="wrap-left" ac:width="120"><ri:attachment ri:filename="gradient.png"/></ac:image><p>Text wrapping around the image.</p><ac:image ac:layout="wrap-right" ac:width="120"><ri:attachment ri:filename="gradient.png"/></ac:image><p>Text wrapping around the image.</p>

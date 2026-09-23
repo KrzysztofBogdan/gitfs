@@ -1,0 +1,2 @@
+<!-- title, line numbers, theme, collapse -->
+<ac:structured-macro ac:name="code" ac:schema-version="1"><ac:parameter ac:name="language">bash</ac:parameter><ac:parameter ac:name="title">Example</ac:parameter><ac:parameter ac:name="linenumbers">true</ac:parameter><ac:parameter ac:name="theme">Midnight</ac:parameter><ac:parameter ac:name="collapse">true</ac:parameter><ac:plain-text-body><![CDATA[gfs status]]></ac:plain-text-body></ac:structured-macro>

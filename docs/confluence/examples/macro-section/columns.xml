@@ -1,0 +1,2 @@
+<!-- legacy section and columns -->
+<ac:structured-macro ac:name="section" ac:schema-version="1"><ac:rich-text-body><ac:structured-macro ac:name="column" ac:schema-version="1"><ac:parameter ac:name="width">30%</ac:parameter><ac:rich-text-body><p>30%</p></ac:rich-text-body></ac:structured-macro><ac:structured-macro ac:name="column" ac:schema-version="1"><ac:rich-text-body><p>rest</p></ac:rich-text-body></ac:structured-macro></ac:rich-text-body></ac:structured-macro>

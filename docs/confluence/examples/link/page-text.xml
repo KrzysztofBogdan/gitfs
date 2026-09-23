@@ -1,0 +1,2 @@
+<!-- link to a page with custom text -->
+<p><ac:link><ri:page ri:content-title="Handoff Home"/><ac:plain-text-link-body><![CDATA[go home]]></ac:plain-text-link-body></ac:link></p>
