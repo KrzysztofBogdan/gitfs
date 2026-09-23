@@ -92,8 +92,8 @@ three-way merge, policy) and one adapter, **Confluence Cloud**. Attachments are 
 downloaded on demand with `gfs get` (`docs/superpowers/specs/2026-09-23-gfs-attachments-design.md`).
 
 ```shell
-export GFS_CONFLUENCE_EMAIL=me@example.com GFS_CONFLUENCE_TOKEN=<atlassian api token>
-gfs clone confluence://acme.atlassian.net/ENG confluence
+gfs auth set me@example.com --host acme.atlassian.net   # asks for the Atlassian API token, keeps it in the system keyring
+gfs clone confluence://acme.atlassian.net/ENG confluence   # the working tree remembers me@example.com
 cd confluence
 gfs get eng/Home/Runbooks.xml      # download a page's attachments into eng/Home/Runbooks.files/
 vim eng/Home/Architecture.xml
@@ -101,6 +101,10 @@ gfs status
 gfs commit --dry-run
 gfs commit
 ```
+
+`gfs auth list` shows stored identities (tokens stored by `alogin` are used too), `gfs auth rm <email>` and
+`gfs auth clear` delete gfs's own tokens. `GFS_CONFLUENCE_EMAIL` and `GFS_CONFLUENCE_TOKEN` still override
+everything (`docs/superpowers/specs/2026-09-24-gfs-credentials-design.md`).
 
 See `example/` for how every adapter's files are meant to look.
 

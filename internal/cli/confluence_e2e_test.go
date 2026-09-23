@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence/cftest"
+	"github.com/KrzysztofBogdan/gitfs/internal/creds"
 )
 
 func replaceIn(t *testing.T, path, old, new string) {
@@ -120,4 +121,30 @@ func TestConfluenceEndToEnd(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "wt2", "eng/Home/Runbooks/Rollback.xml")); err == nil {
 		t.Fatal("deleted page came back")
 	}
+}
+
+// No env vars: the host default picks the email, the keyring gives the token,
+// clone pins the email, and pull keeps using it after the host default changes.
+func TestConfluenceStoredToken(t *testing.T) {
+	home := authEnv(t)
+	srv := cftest.New()
+	defer srv.Close()
+	srv.Accounts = map[string]string{"me@x.com": "good"}
+	srv.AddSpace("ENG", "100")
+	srv.AddPage(cftest.Page{ID: "98001", Title: "Home", SpaceID: "100", Storage: "<p>x</p>"})
+
+	if out, code := gfsIn(t, "good\n", "auth", "set", "me@x.com", "--host", "acme.atlassian.net", "--base", srv.URL); code != 0 {
+		t.Fatal(out)
+	}
+	mustRun(t, 0, "clone", "confluence://acme.atlassian.net/ENG?base="+srv.URL, "wt")
+	cfg, _ := os.ReadFile(filepath.Join(home, "wt", ".gfs", "config"))
+	mustContain(t, string(cfg), "email = me@x.com")
+
+	g, _ := creds.LoadGlobal(creds.DefaultDirs())
+	g.SetHostEmail("acme.atlassian.net", "other@x.com") // has no token: would fail if used
+	if err := g.Save(); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Join(home, "wt"))
+	mustRun(t, 0, "pull")
 }
