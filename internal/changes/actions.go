@@ -57,6 +57,9 @@ func ResolveActions(ad adapter.Adapter, base *xmltree.Node, local *envelope.Doc,
 		var creates, updates, deletes []adapter.Action
 		for i := range s.Elems {
 			e := &s.Elems[i]
+			if e.Kind == schema.Attachment {
+				continue // attachment actions come from the sidecar state (changes/attachments.go)
+			}
 			if e.Kind != schema.Sub {
 				if groupText(b, e.Name) != groupText(l, e.Name) {
 					acts = append(acts, adapter.Action{Verb: "update", Group: e.Name})

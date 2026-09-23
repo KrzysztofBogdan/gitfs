@@ -228,6 +228,16 @@ func StripReadOnly(root *xmltree.Node, s *schema.Schema) {
 }
 
 func stripSubs(n *xmltree.Node, elems []schema.Elem) {
+	var kept []*xmltree.Node
+	for _, c := range n.Children {
+		if c.Kind == xmltree.Element {
+			if e := schema.Find(elems, c.Name); e != nil && e.Kind == schema.Attachment {
+				continue // attachments cannot be re-created from metadata
+			}
+		}
+		kept = append(kept, c)
+	}
+	n.Children = kept
 	for _, c := range n.Elements() {
 		e := schema.Find(elems, c.Name)
 		if e == nil || e.Kind != schema.Sub {

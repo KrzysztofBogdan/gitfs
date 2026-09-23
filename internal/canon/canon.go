@@ -78,15 +78,24 @@ func normalizeChildren(parent *xmltree.Node, elems []schema.Elem) {
 	}
 	var out []*xmltree.Node
 	for i, g := range groups {
-		if elems[i].Kind == schema.Sub && elems[i].SortKey != "" {
-			key := elems[i].SortKey
+		kind := elems[i].Kind
+		if (kind == schema.Sub || kind == schema.Attachment) && elems[i].SortKey != "" {
+			key, idAttr := elems[i].SortKey, elems[i].ID
 			sort.SliceStable(g, func(a, b int) bool {
 				ka, oka := g[a].Attr(key)
 				kb, okb := g[b].Attr(key)
 				if oka != okb {
 					return oka // keyed before unkeyed
 				}
-				return oka && ka < kb
+				if !oka {
+					return false
+				}
+				if ka != kb || kind != schema.Attachment {
+					return ka < kb
+				}
+				ia, _ := g[a].Attr(idAttr)
+				ib, _ := g[b].Attr(idAttr)
+				return ia < ib // attachments: stable order even when timestamps tie
 			})
 		}
 		out = append(out, g...)

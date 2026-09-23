@@ -33,7 +33,7 @@ func group(root *xmltree.Node, s *schema.Schema) grouping {
 	newIdx := 0
 	for _, c := range root.Elements() {
 		key := c.Name
-		if e := schema.Find(s.Elems, c.Name); e != nil && e.Kind == schema.Sub {
+		if e := schema.Find(s.Elems, c.Name); e != nil && (e.Kind == schema.Sub || e.Kind == schema.Attachment) {
 			if id, ok := c.Attr(e.ID); ok {
 				key = c.Name + "\x00" + id
 			} else {

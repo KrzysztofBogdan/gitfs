@@ -84,6 +84,8 @@ func children(n, ref *xmltree.Node, elems []schema.Elem) []error {
 			}
 		case schema.Sub:
 			errs = append(errs, sub(c, ref, e, newIdx)...)
+		case schema.Attachment:
+			errs = append(errs, attachment(c, ref, e)...)
 		}
 	}
 	return errs
@@ -102,6 +104,25 @@ func sub(c, parentRef *xmltree.Node, e *schema.Elem, newIdx map[string]int) []er
 		return []error{fmt.Errorf("%s: no such %s on the remote", label, c.Name)}
 	}
 	return append(readOnly(label, c, ref, e.Attrs), children(ownless(c, e), ref, e.Children)...)
+}
+
+// attachment checks one attachment element (attachments spec 3.1): it must name
+// an existing attachment, keep its service-owned attributes and stay empty.
+func attachment(c, parentRef *xmltree.Node, e *schema.Elem) []error {
+	id, ok := c.Attr(e.ID)
+	if !ok {
+		return []error{fmt.Errorf("<%s> without %s: new attachments are created by adding a file to the sidecar folder", c.Name, e.ID)}
+	}
+	label := fmt.Sprintf("%s[id=%s]", c.Name, id)
+	ref := FindSub(parentRef, c.Name, e.ID, id)
+	if ref == nil {
+		return []error{fmt.Errorf("%s: no such %s on the remote", label, c.Name)}
+	}
+	errs := readOnly(label, c, ref, e.Attrs)
+	if len(c.Elements()) > 0 || strings.TrimSpace(c.TextContent()) != "" {
+		errs = append(errs, fmt.Errorf("%s: must be empty", label))
+	}
+	return errs
 }
 
 // withoutID drops the identity attribute: its absence is what makes a sub new.
