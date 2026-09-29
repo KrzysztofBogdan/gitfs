@@ -23,8 +23,10 @@ confluence:https://<site>.atlassian.net/wiki/spaces/<SPACEKEY>/…
 * `confluence://<site>/HF` is short for `?filter=HF`. The key is the one in
   the space URL: `https://warsaw-dynamics.atlassian.net/wiki/spaces/HF` → `HF`.
 * The third form is a URL copied from the browser, prefixed with
-  `confluence:`. Any page of the space works; it always means the whole
-  space.
+  `confluence:`. Any page under `/wiki/spaces/<KEY>/` (or a legacy
+  `/wiki/display/<KEY>/…` link) means that whole space; `/wiki` and
+  `/wiki/home` mean the whole site. Short share links (`/wiki/x/…`) do not
+  name a space and are refused.
 * `type` and `filter` cannot be combined.
 * The email is optional and URL-encoded (`@` becomes `%40`):
   `confluence://me%40example.com@acme.atlassian.net/ENG`.

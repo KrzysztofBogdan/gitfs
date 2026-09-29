@@ -39,11 +39,15 @@ func normalize(u *url.URL) (*url.URL, error) {
 		if segs[0] != "wiki" {
 			return bad()
 		}
-		for i := 1; i+1 < len(segs); i++ {
-			if segs[i] == "spaces" {
-				q.Set("filter", segs[i+1])
-				break
-			}
+		// /wiki/spaces/KEY/… and legacy /wiki/display/KEY/… name a space; only the
+		// site's own pages mean the whole site. A share link (/wiki/x/…) names a page
+		// whose space gfs cannot tell, so it is refused rather than widened.
+		switch {
+		case len(segs) >= 3 && (segs[1] == "spaces" || segs[1] == "display"):
+			q.Set("filter", segs[2])
+		case len(segs) == 1 || (len(segs) == 2 && (segs[1] == "home" || segs[1] == "spaces")):
+		default:
+			return bad()
 		}
 		if b := u.Query().Get("base"); b != "" {
 			q.Set("base", b)

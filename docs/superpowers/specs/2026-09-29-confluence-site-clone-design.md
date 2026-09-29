@@ -46,7 +46,9 @@ changed.
 | `confluence://[<email>@]<site>[?filter=…&type=…&exclude=…]` | unchanged |
 | `confluence://[<email>@]<site>/<KEY>` | `confluence://[<email>@]<site>?filter=<KEY>` |
 | `confluence:https://<site>/wiki/spaces/<KEY>[/…]` | `confluence://<site>?filter=<KEY>` |
-| `confluence:https://<site>/wiki[/…]` without `/spaces/<KEY>` | `confluence://<site>` |
+| `confluence:https://<site>/wiki/display/<KEY>[/…]` | `confluence://<site>?filter=<KEY>` |
+| `confluence:https://<site>/wiki`, `/wiki/home`, `/wiki/spaces` | `confluence://<site>` |
+| any other browser path (share links `/wiki/x/…`, `/wiki/people/…`) | error |
 
 * The browser form is any URL copied from the address bar: `/overview`,
   `/pages/123/Title` and so on all mean the whole space, never a subtree.
