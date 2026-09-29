@@ -29,5 +29,6 @@ func newPull() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&o.Force, "force", false, "replace conflicted files with the remote version")
+	cmd.Flags().BoolVar(&o.Full, "full", false, "fetch every page instead of only what changed")
 	return cmd
 }

@@ -137,3 +137,12 @@ func TestPullForceRestoresLocallyDeletedFileChangedOnRemote(t *testing.T) {
 		t.Fatalf("force must take the remote version: %+v\n%s", r, out)
 	}
 }
+
+func TestPullFullPassesEmptyCursor(t *testing.T) {
+	env, ad, _ := cloned(t)
+	pull(t, env, PullOpts{})
+	pull(t, env, PullOpts{Full: true})
+	if got := strings.Join(ad.Remote.Cursors, ","); got != ",c1," {
+		t.Fatalf("cursors passed to List (clone, pull, pull --full): %q", got)
+	}
+}

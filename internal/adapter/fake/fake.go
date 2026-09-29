@@ -53,6 +53,7 @@ type Remote struct {
 	Calls        []string         // "verb path" per executed action ("verb file" for attachments)
 	Published    []string         // "path channel"
 	Downloads    int              // successful Download calls
+	Cursors      []string         // cursor passed to each List call
 	recs         map[string]*record
 	seq          int
 }
@@ -223,8 +224,9 @@ type session struct{ r *Remote }
 
 func (s session) Close() error { return nil }
 
-func (s session) List(context.Context, string) (adapter.Listing, error) {
-	l := adapter.Listing{Full: true}
+func (s session) List(_ context.Context, cursor string) (adapter.Listing, error) {
+	s.r.Cursors = append(s.r.Cursors, cursor)
+	l := adapter.Listing{Full: true, Cursor: "c1"}
 	for id, rec := range s.r.recs {
 		l.Resources = append(l.Resources, *s.r.resource(id, rec))
 	}

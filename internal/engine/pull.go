@@ -17,6 +17,7 @@ import (
 
 type PullOpts struct {
 	Force  bool
+	Full   bool // list everything, ignoring the cursor
 	Filter func(string) bool
 }
 
@@ -46,7 +47,11 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 			localByID[c.ID] = c
 		}
 	}
-	l, err := e.Session.List(ctx, e.Index.Cursor)
+	cursor := e.Index.Cursor
+	if o.Full {
+		cursor = "" // label-only changes, deleted comments and attachments show up only this way
+	}
+	l, err := e.Session.List(ctx, cursor)
 	if err != nil {
 		return r, err
 	}
