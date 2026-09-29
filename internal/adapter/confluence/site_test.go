@@ -9,6 +9,7 @@ import (
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence/cftest"
+	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
 
 // site builds ENG and OPS (global, both with a "Home"), ~jan (personal) and OLD (archived).
@@ -153,4 +154,100 @@ func TestPageMovedBetweenSpaces(t *testing.T) {
 		}
 	}
 	t.Fatalf("moved page not under ops/: %+v", l.Resources)
+}
+
+var siteIDs = ids(map[string]string{"eng/Home.xml": "81001", "eng/Home/Architecture.xml": "81002", "ops/Home.xml": "82001"})
+
+func pageRoot(t *testing.T, title string) *xmltree.Node {
+	t.Helper()
+	root, err := xmltree.ParseString(`<page><title>` + title + `</title><body type="application/xhtml+xml"><p>x</p></body></page>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func createReq(t *testing.T, path, title string) adapter.ApplyRequest {
+	return adapter.ApplyRequest{Local: &adapter.Resource{Path: path, Root: pageRoot(t, title)},
+		Actions: []adapter.Action{{Verb: "create"}}, IDByPath: siteIDs}
+}
+
+func TestCreateInEachSpace(t *testing.T) {
+	s := site(t)
+	sess := open(t, s, selection{typ: "global"})
+	for path, space := range map[string]string{"ops/Home/Deploy.xml": "200", "eng/Home/Runbook.xml": "100"} {
+		res := sess.Apply(bg, createReq(t, path, strings.TrimSuffix(path[strings.LastIndex(path, "/")+1:], ".xml")))
+		if res[0].Err != nil {
+			t.Fatalf("%s: %+v", path, res)
+		}
+		if p, _ := s.Page(res[0].ID); p.SpaceID != space {
+			t.Fatalf("%s: created in space %s", path, p.SpaceID)
+		}
+	}
+}
+
+func TestTitleTakenPerSpace(t *testing.T) {
+	s := site(t)
+	sess := open(t, s, selection{typ: "global"})
+	if res := sess.Check(bg, createReq(t, "ops/Home/Architecture.xml", "Architecture")); res[0].Err != nil {
+		t.Fatalf("title used only in ENG must be free in OPS: %+v", res)
+	}
+	res := sess.Check(bg, createReq(t, "eng/Home/Arch2.xml", "Architecture"))
+	if res[0].Err == nil || !strings.Contains(res[0].Err.Error(), `"Architecture" is already used in space ENG`) {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestCreateUnknownSpaceFolder(t *testing.T) {
+	s := site(t)
+	sess := open(t, s, selection{typ: "global"})
+	for _, check := range []bool{true, false} {
+		req := createReq(t, "new/Page.xml", "Page")
+		var res []adapter.Result
+		if check {
+			res = sess.Check(bg, req)
+		} else {
+			res = sess.Apply(bg, req)
+		}
+		if res[0].Err == nil || !strings.Contains(res[0].Err.Error(), `no space "new" in this tree; gfs does not create spaces (spaces: eng, ops)`) {
+			t.Fatalf("check=%v: %+v", check, res)
+		}
+	}
+}
+
+func TestMoveBetweenSpacesRefused(t *testing.T) {
+	s := site(t)
+	sess := open(t, s, selection{typ: "global"})
+	base, err := sess.Fetch(bg, "81002")
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := &adapter.Resource{ID: base.ID, Path: "ops/Home/Architecture.xml", Root: base.Root.Clone()}
+	req := adapter.ApplyRequest{Local: local, Base: base, Lock: base.Version, IDByPath: siteIDs,
+		Actions: []adapter.Action{{Verb: "move", From: base.Path, To: local.Path}}}
+	for _, res := range [][]adapter.Result{sess.Check(bg, req), sess.Apply(bg, req)} {
+		if res[0].Err == nil || !strings.Contains(res[0].Err.Error(), "moving pages between spaces is not supported") {
+			t.Fatalf("%+v", res)
+		}
+	}
+	if p, _ := s.Page("81002"); p.SpaceID != "100" || p.Version != 1 {
+		t.Fatalf("page changed: %+v", p)
+	}
+}
+
+func TestApplyLoadsOnlyTouchedSpace(t *testing.T) {
+	s := site(t)
+	sess := open(t, s, selection{typ: "global"})
+	base, _ := sess.Fetch(bg, "82001")
+	sess = open(t, s, selection{typ: "global"})
+	s.TakeRequests()
+	local := &adapter.Resource{ID: base.ID, Path: base.Path, Root: base.Root.Clone()}
+	res := sess.Apply(bg, adapter.ApplyRequest{Local: local, Base: base, Lock: base.Version, IDByPath: siteIDs,
+		Actions: []adapter.Action{{Verb: "update", Group: "body"}}})
+	if res[0].Err != nil {
+		t.Fatalf("%+v", res)
+	}
+	if got := loadedSpaces(s.TakeRequests()); got != "200" {
+		t.Fatalf("loaded %q, want only 200", got)
+	}
 }

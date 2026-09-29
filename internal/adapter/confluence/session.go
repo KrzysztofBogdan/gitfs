@@ -117,12 +117,33 @@ func (s *session) spaceFor(p string) (*space, error) {
 	return sp, nil
 }
 
-// keyOf is a bridge until Task 5: the space key of a working path, or "".
-func (s *session) keyOf(p string) string {
-	if sp, err := s.spaceFor(p); err == nil {
-		return sp.key
+// prepare loads the page trees of the spaces req touches, and only those.
+func (s *session) prepare(ctx context.Context, req adapter.ApplyRequest) error {
+	var paths []string
+	if req.Local != nil {
+		paths = append(paths, req.Local.Path)
 	}
-	return ""
+	if req.Base != nil {
+		paths = append(paths, req.Base.Path)
+	}
+	for _, a := range req.Actions {
+		if a.Verb == "move" {
+			paths = append(paths, a.From, a.To)
+		}
+	}
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		sp, err := s.spaceFor(p)
+		if err != nil {
+			return err
+		}
+		if err := s.load(ctx, sp); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *session) Close() error { return nil }
@@ -280,29 +301,30 @@ func storageBody(v string) map[string]any {
 	return map[string]any{"representation": "storage", "value": v}
 }
 
-// titleTaken reports whether another page in the space already has title.
-func (s *session) titleTaken(title, except string) bool {
+// titleTaken reports whether another page in sp already has title.
+func (s *session) titleTaken(sp *space, title, except string) bool {
 	for _, r := range s.tree {
-		if r.Title == title && r.ID != except {
+		if r.Space == sp.id && r.Title == title && r.ID != except {
 			return true
 		}
 	}
 	return false
 }
 
-func (s *session) parentFor(p string, idByPath func(string) (string, bool)) (string, error) {
-	if _, err := s.spaceFor(p); err != nil {
-		return "", err
+func (s *session) parentFor(p string, idByPath func(string) (string, bool)) (*space, string, error) {
+	sp, err := s.spaceFor(p)
+	if err != nil {
+		return nil, "", err
 	}
 	parent := parentPath(p)
 	if parent == "" {
-		return "", nil
+		return sp, "", nil
 	}
 	id, ok := idByPath(parent)
 	if !ok {
-		return "", fmt.Errorf("parent page %s is not on the remote yet; commit it first", parent)
+		return nil, "", fmt.Errorf("parent page %s is not on the remote yet; commit it first", parent)
 	}
-	return id, nil
+	return sp, id, nil
 }
 
 // pagePut computes the title and parent for the combined page update.
@@ -318,10 +340,21 @@ func (s *session) pagePut(req adapter.ApplyRequest, idx []int) (title, parent st
 		if a.Verb != "move" {
 			continue
 		}
+		from, err := s.spaceFor(a.From)
+		if err != nil {
+			return "", "", err
+		}
+		to, err := s.spaceFor(a.To)
+		if err != nil {
+			return "", "", err
+		}
+		if from != to {
+			return "", "", errors.New("moving pages between spaces is not supported")
+		}
 		if parentPath(a.To) == "" {
 			return "", "", errors.New("moving a page to the space root is not supported; move it under a page")
 		}
-		if parent, err = s.parentFor(a.To, req.IDByPath); err != nil {
+		if _, parent, err = s.parentFor(a.To, req.IDByPath); err != nil {
 			return "", "", err
 		}
 		if !titleChanged && sanitize(title) != baseName(a.To) {
@@ -332,7 +365,7 @@ func (s *session) pagePut(req adapter.ApplyRequest, idx []int) (title, parent st
 }
 
 func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter.Result {
-	if err := s.loadAll(ctx); err != nil {
+	if err := s.prepare(ctx, req); err != nil {
 		return []adapter.Result{{Action: req.Actions[0], Err: err}}
 	}
 	var out []adapter.Result
@@ -347,17 +380,17 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 			if title == "" {
 				title = baseName(req.Local.Path)
 			}
-			if _, err := s.parentFor(req.Local.Path, req.IDByPath); err != nil {
+			if sp, _, err := s.parentFor(req.Local.Path, req.IDByPath); err != nil {
 				res.Err = err
-			} else if s.titleTaken(title, "") {
-				res.Err = fmt.Errorf("title %q is already used in space %s", title, s.keyOf(req.Local.Path))
+			} else if s.titleTaken(sp, title, "") {
+				res.Err = fmt.Errorf("title %q is already used in space %s", title, sp.key)
 			}
 		case a.Verb == "move" || (a.Verb == "update" && a.Group == "title"):
 			title, _, err := s.pagePut(req, []int{i})
 			if err != nil {
 				res.Err = err
-			} else if s.titleTaken(title, req.Local.ID) {
-				res.Err = fmt.Errorf("title %q is already used in space %s", title, s.keyOf(req.Local.Path))
+			} else if sp, _ := s.spaceFor(req.Local.Path); s.titleTaken(sp, title, req.Local.ID) {
+				res.Err = fmt.Errorf("title %q is already used in space %s", title, sp.key)
 			}
 		case a.Verb == "update" || a.Verb == "delete":
 		default:
@@ -369,7 +402,7 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 }
 
 func (s *session) Apply(ctx context.Context, req adapter.ApplyRequest) []adapter.Result {
-	if err := s.loadAll(ctx); err != nil {
+	if err := s.prepare(ctx, req); err != nil {
 		return []adapter.Result{{Action: req.Actions[0], Err: err, Code: codeOf(err)}}
 	}
 	out := make([]adapter.Result, len(req.Actions))
@@ -413,7 +446,7 @@ func (s *session) Apply(ctx context.Context, req adapter.ApplyRequest) []adapter
 			}
 			if err == nil {
 				ref := s.tree[id]
-				ref.Title = title
+				ref.Title, ref.Version = title, lock+1
 				if parent != "" {
 					ref.Parent = parent
 				}
@@ -451,7 +484,7 @@ func (s *session) create(ctx context.Context, req adapter.ApplyRequest) []adapte
 	fail := func(err error) []adapter.Result {
 		return []adapter.Result{{Action: act, Err: err, Code: codeOf(err)}}
 	}
-	parent, err := s.parentFor(req.Local.Path, req.IDByPath)
+	sp, parent, err := s.parentFor(req.Local.Path, req.IDByPath)
 	if err != nil {
 		return fail(err)
 	}
@@ -459,7 +492,6 @@ func (s *session) create(ctx context.Context, req adapter.ApplyRequest) []adapte
 	if title == "" {
 		title = baseName(req.Local.Path)
 	}
-	sp, _ := s.spaceFor(req.Local.Path)
 	body := map[string]any{"spaceId": sp.id, "status": "current", "title": title,
 		"body": storageBody(storageOf(req.Local.Root.Child("body")))}
 	if parent != "" {
