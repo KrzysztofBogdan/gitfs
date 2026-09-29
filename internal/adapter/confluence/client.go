@@ -128,6 +128,9 @@ func (c *client) paginate(ctx context.Context, path string, each func(json.RawMe
 			}
 		}
 		path = resp.Links.Next
+		if path != "" && !strings.HasPrefix(path, "/wiki/") {
+			path = "/wiki" + path // REST v1 links are relative to the /wiki context
+		}
 	}
 	return nil
 }

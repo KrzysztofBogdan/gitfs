@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence/cftest"
@@ -140,5 +141,23 @@ func TestErrorMapping(t *testing.T) {
 	anon := newClient(target{base: s.URL})
 	if err := anon.do(ctx, "GET", "/wiki/api/v2/spaces?keys=ENG", nil, nil); codeOf(err) != "401" {
 		t.Fatalf("401: %v", err)
+	}
+}
+
+func TestPaginateV1Links(t *testing.T) {
+	s := cftest.New()
+	defer s.Close()
+	s.Clock = func() time.Time { return time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) }
+	s.PageLimit = 1
+	s.AddSpace("ENG", "100")
+	s.AddPage(cftest.Page{ID: "1", Title: "A", SpaceID: "100"})
+	s.AddComment(cftest.Comment{ID: "c1", PageID: "1", CreatedAt: "2026-09-29T11:59:00.000Z"})
+	s.AddComment(cftest.Comment{ID: "c2", PageID: "1", CreatedAt: "2026-09-29T11:59:00.000Z"})
+	c := newClient(target{base: s.URL, email: "me@x.com", token: "t"})
+	n := 0
+	cql := url.QueryEscape(`type = comment AND lastmodified >= now("-5m")`)
+	err := c.paginate(bg, "/wiki/rest/api/content/search?limit=1&expand=container&cql="+cql, func(json.RawMessage) error { n++; return nil })
+	if err != nil || n != 2 {
+		t.Fatalf("n=%d err=%v", n, err)
 	}
 }
