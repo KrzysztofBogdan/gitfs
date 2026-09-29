@@ -123,6 +123,10 @@ func TestStorageExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(tg.sel.keys) != 1 {
+		t.Fatalf("GFS_EXAMPLES_URL must name exactly one space")
+	}
+	key := tg.sel.keys[0]
 	c := newClient(tg)
 	var spaces struct {
 		Results []struct {
@@ -130,8 +134,8 @@ func TestStorageExamples(t *testing.T) {
 			HomepageID string `json:"homepageId"`
 		} `json:"results"`
 	}
-	if err := c.do(bg, http.MethodGet, "/wiki/api/v2/spaces?keys="+url.QueryEscape(tg.space), nil, &spaces); err != nil || len(spaces.Results) == 0 {
-		t.Fatalf("space %s: %v", tg.space, err)
+	if err := c.do(bg, http.MethodGet, "/wiki/api/v2/spaces?keys="+url.QueryEscape(key), nil, &spaces); err != nil || len(spaces.Results) == 0 {
+		t.Fatalf("space %s: %v", key, err)
 	}
 	space := spaces.Results[0]
 	parent := ensurePage(t, c, space.ID, space.HomepageID, "gfs storage examples",

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -60,9 +61,9 @@ func TestParseTarget(t *testing.T) {
 			fakeLookup{tokens: map[string]string{"s@x.com": "st"}, sole: "s@x.com"}, "https://acme.atlassian.net", "s@x.com", "st", ""},
 		{"env token beats store", "confluence://acme.atlassian.net/ENG", map[string]string{"email": "c@x.com"}, env(map[string]string{"GFS_CONFLUENCE_TOKEN": "envtok"}),
 			fakeLookup{tokens: map[string]string{"c@x.com": "ct"}}, "https://acme.atlassian.net", "c@x.com", "envtok", ""},
-		{"bad path", "confluence://acme.atlassian.net/", nil, both, fakeLookup{}, "", "", "", "want confluence://<host>/<SPACEKEY>"},
+		{"bad path", "confluence://acme.atlassian.net/a/b", nil, both, fakeLookup{}, "", "", "", "want confluence://<site>"},
 		{"no identity", "confluence://acme.atlassian.net/ENG", nil, none, fakeLookup{}, "", "", "",
-			"no identity for acme.atlassian.net: run gfs auth set <email> --host acme.atlassian.net, or put the email in the URL (confluence://me%40x.com@acme.atlassian.net/ENG)"},
+			"no identity for acme.atlassian.net: run gfs auth set <email> --host acme.atlassian.net, or put the email in the URL (confluence://me%40x.com@acme.atlassian.net)"},
 		{"no token", "confluence://acme.atlassian.net/ENG", map[string]string{"email": "c@x.com"}, none, fakeLookup{}, "", "", "",
 			"no token for c@x.com: run gfs auth set c@x.com"},
 	}
@@ -75,7 +76,7 @@ func TestParseTarget(t *testing.T) {
 			}
 			continue
 		}
-		if err != nil || got.base != c.base || got.space != "ENG" || got.email != c.email || got.token != c.token {
+		if err != nil || got.base != c.base || !reflect.DeepEqual(got.sel, selection{keys: []string{"ENG"}}) || got.email != c.email || got.token != c.token {
 			t.Errorf("%s: got %+v %v", c.name, got, err)
 		}
 	}
@@ -97,7 +98,7 @@ func TestVerifyToken(t *testing.T) {
 }
 
 func testClient(s *cftest.Server) *client {
-	return newClient(target{base: s.URL, space: "ENG", email: "me@x.com", token: "t"})
+	return newClient(target{base: s.URL, email: "me@x.com", token: "t"})
 }
 
 func TestPaginate(t *testing.T) {

@@ -19,7 +19,7 @@ func TestAttachmentEndpoints(t *testing.T) {
 	defer srv.Close()
 	srv.AddSpace("ENG", "100")
 	srv.AddPage(cftest.Page{ID: "98130", Title: "Runbooks", SpaceID: "100", Storage: "<p/>"})
-	c := newClient(target{base: srv.URL, space: "ENG", email: "me@x.com", token: "t"})
+	c := newClient(target{base: srv.URL, email: "me@x.com", token: "t"})
 
 	var created struct {
 		Results []struct {

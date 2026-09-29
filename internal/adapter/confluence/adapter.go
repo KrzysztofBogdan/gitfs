@@ -23,8 +23,30 @@ func (*Adapter) Name() string                 { return "confluence" }
 func (*Adapter) Schemes() []string            { return []string{"confluence"} }
 func (*Adapter) Schema() *schema.Schema       { return pageSchema }
 func (*Adapter) PathModel() adapter.PathModel { return adapter.Tree }
-func (*Adapter) DefaultDir(*url.URL) string   { return "confluence" }
 func (*Adapter) Verbs() []adapter.Verb        { return nil }
+
+func (*Adapter) Normalize(u *url.URL) (string, error) {
+	n, err := normalize(u)
+	if err != nil {
+		return "", err
+	}
+	if _, err := parseSelection(n.Query()); err != nil {
+		return "", fmt.Errorf("bad remote %q: %w", n.String(), err)
+	}
+	return n.String(), nil
+}
+
+// DefaultDir is the space folder for a one-space selection, else the site name.
+func (*Adapter) DefaultDir(u *url.URL) string {
+	n, err := normalize(u)
+	if err != nil {
+		return "confluence"
+	}
+	if sel, err := parseSelection(n.Query()); err == nil && len(sel.keys) == 1 {
+		return strings.ToLower(sel.keys[0])
+	}
+	return strings.SplitN(n.Hostname(), ".", 2)[0]
+}
 
 func (*Adapter) Open(ctx context.Context, u *url.URL, cfg map[string]string) (adapter.Session, error) {
 	t, err := parseTarget(u, cfg, os.Getenv, creds.System{})

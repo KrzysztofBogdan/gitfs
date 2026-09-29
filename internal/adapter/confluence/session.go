@@ -27,15 +27,19 @@ type session struct {
 }
 
 func openSession(ctx context.Context, t target) (*session, error) {
-	s := &session{c: newClient(t), spaceKey: t.space, spaceDir: strings.ToLower(t.space), names: map[string]string{}}
+	if len(t.sel.keys) != 1 {
+		return nil, errors.New("a working tree with several spaces needs the multi-space session") // replaced in Task 4
+	}
+	key := t.sel.keys[0]
+	s := &session{c: newClient(t), spaceKey: key, spaceDir: strings.ToLower(key), names: map[string]string{}}
 	var resp struct {
 		Results []struct{ ID, Key string } `json:"results"`
 	}
-	if err := s.c.do(ctx, http.MethodGet, "/wiki/api/v2/spaces?keys="+url.QueryEscape(t.space), nil, &resp); err != nil {
+	if err := s.c.do(ctx, http.MethodGet, "/wiki/api/v2/spaces?keys="+url.QueryEscape(key), nil, &resp); err != nil {
 		return nil, err
 	}
 	if len(resp.Results) == 0 {
-		return nil, fmt.Errorf("space %s not found or not visible", t.space)
+		return nil, fmt.Errorf("space %s not found or not visible", key)
 	}
 	s.spaceID = resp.Results[0].ID
 	return s, nil

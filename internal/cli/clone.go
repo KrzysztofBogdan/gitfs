@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"net/url"
+
 	"github.com/spf13/cobra"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
@@ -17,6 +19,15 @@ func newClone() *cobra.Command {
 			if err != nil {
 				return usage("%v", err)
 			}
+			raw := args[0]
+			if n, ok := ad.(adapter.Normalizer); ok {
+				if raw, err = n.Normalize(u); err != nil {
+					return usage("%v", err)
+				}
+				if u, err = url.Parse(raw); err != nil {
+					return err
+				}
+			}
 			dir := ad.DefaultDir(u)
 			if len(args) == 2 {
 				dir = args[1]
@@ -26,7 +37,7 @@ func newClone() *cobra.Command {
 				return err
 			}
 			defer sess.Close()
-			_, err = engine.Clone(cmd.Context(), ad, sess, args[0], dir, cmd.OutOrStdout())
+			_, err = engine.Clone(cmd.Context(), ad, sess, raw, dir, cmd.OutOrStdout())
 			return err
 		},
 	}

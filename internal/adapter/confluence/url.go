@@ -9,26 +9,129 @@ import (
 	"github.com/KrzysztofBogdan/gitfs/internal/creds"
 )
 
-type target struct{ base, host, space, email, token string }
+// selection is which spaces a working tree holds (site clone spec §2.2).
+type selection struct {
+	keys    []string // filter: exactly these spaces
+	typ     string   // global, personal or all; "" when keys is set
+	exclude []string
+}
+
+type target struct {
+	base, host, email, token string
+	sel                      selection
+}
+
+const urlForms = "want confluence://<site>[?filter=K1,K2&type=global|personal|all&exclude=K1,K2], confluence://<site>/<KEY>, or confluence:https://<site>/wiki/spaces/<KEY>/…"
+
+// normalize rewrites every accepted remote form as
+// confluence://[user@]<site>?<parameters> (site clone spec §2.1).
+func normalize(u *url.URL) (*url.URL, error) {
+	bad := func() (*url.URL, error) { return nil, fmt.Errorf("bad remote %q: %s", u.String(), urlForms) }
+	out := &url.URL{Scheme: "confluence"}
+	q := url.Values{}
+	if u.Opaque != "" {
+		// a browser URL: only /wiki/spaces/<KEY> counts; its own query (atlOrigin=…) is not ours
+		in, err := url.Parse(u.Opaque)
+		if err != nil || (in.Scheme != "https" && in.Scheme != "http") || in.Host == "" {
+			return bad()
+		}
+		segs := strings.Split(strings.Trim(in.Path, "/"), "/")
+		if segs[0] != "wiki" {
+			return bad()
+		}
+		for i := 1; i+1 < len(segs); i++ {
+			if segs[i] == "spaces" {
+				q.Set("filter", segs[i+1])
+				break
+			}
+		}
+		if b := u.Query().Get("base"); b != "" {
+			q.Set("base", b)
+		}
+		out.User, out.Host = in.User, in.Host
+	} else {
+		if u.Host == "" {
+			return bad()
+		}
+		for k, vs := range u.Query() {
+			switch k {
+			case "base", "filter", "type", "exclude":
+				q.Set(k, vs[len(vs)-1])
+			default:
+				return nil, fmt.Errorf("bad remote %q: unknown parameter %q", u.String(), k)
+			}
+		}
+		switch key := strings.Trim(u.Path, "/"); {
+		case key == "":
+		case strings.Contains(key, "/"):
+			return bad()
+		case q.Has("filter"):
+			return nil, fmt.Errorf("bad remote %q: name the space in the path or in filter, not both", u.String())
+		default:
+			q.Set("filter", key)
+		}
+		out.User, out.Host = u.User, u.Host
+	}
+	out.RawQuery = encodeQuery(q)
+	return out, nil
+}
+
+// encodeQuery writes the parameters in a fixed order and leaves commas readable.
+func encodeQuery(q url.Values) string {
+	var parts []string
+	for _, k := range []string{"base", "filter", "type", "exclude"} {
+		if v := q.Get(k); v != "" {
+			parts = append(parts, k+"="+strings.ReplaceAll(url.QueryEscape(v), "%2C", ","))
+		}
+	}
+	return strings.Join(parts, "&")
+}
+
+func parseSelection(q url.Values) (selection, error) {
+	split := func(v string) []string {
+		var out []string
+		for _, k := range strings.Split(v, ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				out = append(out, k)
+			}
+		}
+		return out
+	}
+	sel := selection{keys: split(q.Get("filter")), typ: q.Get("type"), exclude: split(q.Get("exclude"))}
+	switch {
+	case len(sel.keys) > 0 && sel.typ != "":
+		return selection{}, errors.New("type and filter cannot be combined: filter already names the spaces")
+	case len(sel.keys) > 0:
+	case sel.typ == "":
+		sel.typ = "global"
+	case sel.typ != "global" && sel.typ != "personal" && sel.typ != "all":
+		return selection{}, fmt.Errorf("type=%s: want global, personal or all", sel.typ)
+	}
+	return sel, nil
+}
 
 func parseTarget(u *url.URL, cfg map[string]string, getenv func(string) string, lk creds.Lookup) (target, error) {
-	space := strings.Trim(u.Path, "/")
-	if u.Host == "" || space == "" || strings.Contains(space, "/") {
-		return target{}, fmt.Errorf("bad remote %q: want confluence://<host>/<SPACEKEY>", u.String())
+	n, err := normalize(u)
+	if err != nil {
+		return target{}, err
 	}
-	t := target{host: u.Hostname(), space: space, base: "https://" + u.Host}
+	sel, err := parseSelection(n.Query())
+	if err != nil {
+		return target{}, fmt.Errorf("bad remote %q: %w", n.String(), err)
+	}
+	t := target{host: n.Hostname(), sel: sel, base: "https://" + n.Host}
 	if b := cfg["base"]; b != "" {
 		t.base = strings.TrimRight(b, "/")
 	}
-	if b := u.Query().Get("base"); b != "" {
+	if b := n.Query().Get("base"); b != "" {
 		t.base = strings.TrimRight(b, "/")
 	}
-	email, err := resolveEmail(u, cfg, getenv, lk)
+	email, err := resolveEmail(n, cfg, getenv, lk)
 	if err != nil {
 		return target{}, err
 	}
 	if email == "" {
-		return target{}, fmt.Errorf("no identity for %s: run gfs auth set <email> --host %s, or put the email in the URL (confluence://me%%40x.com@%s/%s)", t.host, t.host, t.host, space)
+		return target{}, fmt.Errorf("no identity for %s: run gfs auth set <email> --host %s, or put the email in the URL (confluence://me%%40x.com@%s)", t.host, t.host, t.host)
 	}
 	t.email = email
 	if t.token = getenv("GFS_CONFLUENCE_TOKEN"); t.token == "" {

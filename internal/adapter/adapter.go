@@ -134,6 +134,12 @@ type Session interface {
 // Clone records the identity as [remote] email (credentials spec §6).
 type Identified interface{ Identity() string }
 
+// Normalizer is implemented by adapters that accept several spellings of a
+// remote. Clone records the canonical one as [remote] url.
+type Normalizer interface {
+	Normalize(u *url.URL) (string, error)
+}
+
 // Linter is implemented by adapters that can warn about content the service
 // is not known to store unchanged (storage reference spec §3.2).
 type Linter interface {

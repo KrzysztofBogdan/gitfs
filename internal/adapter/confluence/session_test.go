@@ -23,7 +23,7 @@ func space(t *testing.T) (*cftest.Server, *session) {
 	s.AddPage(cftest.Page{ID: "98120", Title: "Architecture", ParentID: "98001", SpaceID: "100", Storage: "<p>a</p><p>b</p>"})
 	s.AddPage(cftest.Page{ID: "98130", Title: "Runbooks", ParentID: "98001", SpaceID: "100", Storage: "<p>Ops.</p>"})
 	s.AddComment(cftest.Comment{ID: "7731", PageID: "98120", Storage: "<p>Out of date.</p>"})
-	sess, err := openSession(bg, target{base: s.URL, space: "ENG", email: "me@x.com", token: "t"})
+	sess, err := openSession(bg, target{base: s.URL, sel: selection{keys: []string{"ENG"}}, email: "me@x.com", token: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestSessionIdentity(t *testing.T) {
 	s := cftest.New()
 	defer s.Close()
 	s.AddSpace("ENG", "100")
-	sess, err := openSession(context.Background(), target{base: s.URL, space: "ENG", email: "me@x.com", token: "t"})
+	sess, err := openSession(context.Background(), target{base: s.URL, sel: selection{keys: []string{"ENG"}}, email: "me@x.com", token: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
