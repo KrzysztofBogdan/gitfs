@@ -53,8 +53,8 @@ func (s *session) resolveSpaces(ctx context.Context) error {
 		path += "&keys=" + strings.Join(esc, ",") // no status: a named archived space is included
 	} else {
 		path += "&status=current"
-		if s.sel.typ != "all" {
-			path += "&type=" + s.sel.typ
+		if s.sel.typ != "" && s.sel.typ != "all" {
+			path += "&type=" + url.QueryEscape(s.sel.typ)
 		}
 	}
 	excluded := map[string]bool{}
@@ -62,11 +62,12 @@ func (s *session) resolveSpaces(ctx context.Context) error {
 		excluded[k] = true
 	}
 	err := s.c.paginate(ctx, path, func(raw json.RawMessage) error {
-		var a struct{ ID, Key string }
+		var a struct{ ID, Key, Type string }
 		if err := json.Unmarshal(raw, &a); err != nil {
 			return err
 		}
-		if !excluded[a.Key] {
+		personalByDefault := len(s.sel.keys) == 0 && s.sel.typ == "" && a.Type == "personal"
+		if !excluded[a.Key] && !personalByDefault {
 			sp := &space{key: a.Key, id: a.ID, dir: strings.ToLower(a.Key)}
 			s.spaces[sp.dir], s.byID[sp.id] = sp, sp
 		}

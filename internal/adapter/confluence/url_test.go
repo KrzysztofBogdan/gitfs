@@ -52,13 +52,15 @@ func TestParseSelection(t *testing.T) {
 		want selection
 		err  string
 	}{
-		{"", selection{typ: "global"}, ""},
+		{"", selection{}, ""},
+		{"type=collaboration", selection{typ: "collaboration"}, ""},
+		{"type=knowledge_base", selection{typ: "knowledge_base"}, ""},
 		{"type=personal", selection{typ: "personal"}, ""},
 		{"type=all&exclude=OLD,~jan", selection{typ: "all", exclude: []string{"OLD", "~jan"}}, ""},
 		{"filter=HF,ENG", selection{keys: []string{"HF", "ENG"}}, ""},
 		{"filter=HF&exclude=HF", selection{keys: []string{"HF"}, exclude: []string{"HF"}}, ""},
 		{"filter=HF&type=global", selection{}, "cannot be combined"},
-		{"type=team", selection{}, "want global, personal or all"},
+		{"type=team", selection{}, "want global, collaboration, knowledge_base, personal or all"},
 	}
 	for _, c := range cases {
 		q, _ := url.ParseQuery(c.q)

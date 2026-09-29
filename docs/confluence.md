@@ -7,7 +7,7 @@ usage: [start.md](../start.md).
 ## Remote URL
 
 ```text
-confluence://[<email>@]<site>.atlassian.net[?filter=K1,K2&type=global|personal|all&exclude=K1,K2]
+confluence://[<email>@]<site>.atlassian.net[?filter=K1,K2&type=<type>|all&exclude=K1,K2]
 confluence://[<email>@]<site>.atlassian.net/<SPACEKEY>
 confluence:https://<site>.atlassian.net/wiki/spaces/<SPACEKEY>/…
 ```
@@ -15,11 +15,11 @@ confluence:https://<site>.atlassian.net/wiki/spaces/<SPACEKEY>/…
 | parameter | meaning | default |
 |-----------|---------|---------|
 | `filter=K1,K2` | exactly these spaces, any type, archived included | all spaces |
-| `type=global\|personal\|all` | which spaces, when there is no `filter` | `global` |
+| `type=<type>` | only spaces of this Confluence type (`global`, `collaboration`, `knowledge_base`, `personal`), or `all`; only without `filter` | every type except `personal` |
 | `exclude=K1,K2` | leave these out | none |
 
-* No `filter`: every current space of that type the account can see.
-  Archived spaces are skipped.
+* No `filter`: every current space the account can see, personal spaces
+  left out unless `type` asks for them. Archived spaces are skipped.
 * `confluence://<site>/HF` is short for `?filter=HF`. The key is the one in
   the space URL: `https://warsaw-dynamics.atlassian.net/wiki/spaces/HF` → `HF`.
 * The third form is a URL copied from the browser, prefixed with
@@ -31,7 +31,7 @@ confluence:https://<site>.atlassian.net/wiki/spaces/<SPACEKEY>/…
 * `?base=<url>` overrides the API base URL (tests only).
 
 ```shell
-gfs clone confluence://acme.atlassian.net                       # every global space, into acme/
+gfs clone confluence://acme.atlassian.net                       # every non-personal space, into acme/
 gfs clone confluence://acme.atlassian.net/ENG                   # one space, into eng/
 gfs clone "confluence:https://acme.atlassian.net/wiki/spaces/ENG/overview"
 gfs clone "confluence://acme.atlassian.net?type=all&exclude=ARCHIVE"

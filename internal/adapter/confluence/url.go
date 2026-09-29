@@ -12,7 +12,7 @@ import (
 // selection is which spaces a working tree holds (site clone spec §2.2).
 type selection struct {
 	keys    []string // filter: exactly these spaces
-	typ     string   // global, personal or all; "" when keys is set
+	typ     string   // a Confluence space type, or all; "" (no filter) is every type but personal
 	exclude []string
 }
 
@@ -21,7 +21,7 @@ type target struct {
 	sel                      selection
 }
 
-const urlForms = "want confluence://<site>[?filter=K1,K2&type=global|personal|all&exclude=K1,K2], confluence://<site>/<KEY>, or confluence:https://<site>/wiki/spaces/<KEY>/…"
+const urlForms = "want confluence://<site>[?filter=K1,K2&type=<space type>|all&exclude=K1,K2], confluence://<site>/<KEY>, or confluence:https://<site>/wiki/spaces/<KEY>/…"
 
 // normalize rewrites every accepted remote form as
 // confluence://[user@]<site>?<parameters> (site clone spec §2.1).
@@ -87,6 +87,8 @@ func encodeQuery(q url.Values) string {
 	return strings.Join(parts, "&")
 }
 
+var spaceTypes = map[string]bool{"global": true, "collaboration": true, "knowledge_base": true, "personal": true, "all": true}
+
 func parseSelection(q url.Values) (selection, error) {
 	split := func(v string) []string {
 		var out []string
@@ -101,11 +103,9 @@ func parseSelection(q url.Values) (selection, error) {
 	switch {
 	case len(sel.keys) > 0 && sel.typ != "":
 		return selection{}, errors.New("type and filter cannot be combined: filter already names the spaces")
-	case len(sel.keys) > 0:
-	case sel.typ == "":
-		sel.typ = "global"
-	case sel.typ != "global" && sel.typ != "personal" && sel.typ != "all":
-		return selection{}, fmt.Errorf("type=%s: want global, personal or all", sel.typ)
+	case len(sel.keys) > 0, sel.typ == "":
+	case !spaceTypes[sel.typ]:
+		return selection{}, fmt.Errorf("type=%s: want global, collaboration, knowledge_base, personal or all", sel.typ)
 	}
 	return sel, nil
 }

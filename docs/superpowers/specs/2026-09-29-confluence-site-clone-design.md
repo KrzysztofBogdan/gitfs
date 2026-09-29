@@ -63,7 +63,7 @@ changed.
 | parameter | meaning | default |
 |-----------|---------|---------|
 | `filter=K1,K2` | exactly these spaces, any type, archived included | all spaces |
-| `type=global\|personal\|all` | which spaces, when `filter` is absent | `global` |
+| `type=<type>\|all` | which spaces, when `filter` is absent; `<type>` is a Confluence space type (`global`, `collaboration`, `knowledge_base`, `personal`) | every type except `personal` |
 | `exclude=K1,K2` | removed from the result, applied last | none |
 
 * Every key in `filter` must exist and be visible; otherwise the command fails

@@ -251,3 +251,17 @@ func TestApplyLoadsOnlyTouchedSpace(t *testing.T) {
 		t.Fatalf("loaded %q, want only 200", got)
 	}
 }
+
+// Confluence has space types besides global and personal (collaboration,
+// knowledge_base): the default selection keeps everything but personal spaces.
+func TestDefaultSelectionSkipsOnlyPersonal(t *testing.T) {
+	s := site(t)
+	s.PutSpace(cftest.Space{Key: "TEAM", ID: "500", Type: "collaboration"})
+	s.PutSpace(cftest.Space{Key: "KB", ID: "600", Type: "knowledge_base"})
+	if got := dirs(open(t, s, selection{})); got != "eng,kb,ops,team" {
+		t.Fatalf("default: %s", got)
+	}
+	if got := dirs(open(t, s, selection{typ: "collaboration"})); got != "team" {
+		t.Fatalf("type=collaboration: %s", got)
+	}
+}
