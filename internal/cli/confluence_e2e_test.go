@@ -92,7 +92,7 @@ func TestConfluenceEndToEnd(t *testing.T) {
 	}
 
 	// 4. pull a remote comment
-	srv.AddComment(cftest.Comment{PageID: "98120", Storage: "<p>Nice.</p>"})
+	srv.AddComment(cftest.Comment{PageID: "98120", Storage: "<p>Nice.</p>", CreatedAt: srv.Stamp()})
 	if out := mustRun(t, 0, "pull"); !strings.Contains(out, "~  "+arch) {
 		t.Fatal(out)
 	}

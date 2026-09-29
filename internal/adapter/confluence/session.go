@@ -218,29 +218,6 @@ func (s *session) name(ctx context.Context, accountID string) string {
 	return n
 }
 
-func (s *session) List(ctx context.Context, _ string) (adapter.Listing, error) {
-	if err := s.loadAll(ctx); err != nil {
-		return adapter.Listing{}, err
-	}
-	ids := make([]string, 0, len(s.tree))
-	for id := range s.tree {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return idLess(ids[i], ids[j]) })
-	l := adapter.Listing{Full: true}
-	for _, id := range ids {
-		r, err := s.Fetch(ctx, id)
-		if errors.Is(err, adapter.ErrNotFound) {
-			continue // deleted while listing
-		}
-		if err != nil {
-			return adapter.Listing{}, err
-		}
-		l.Resources = append(l.Resources, *r)
-	}
-	return l, nil
-}
-
 func (s *session) Fetch(ctx context.Context, id string) (*adapter.Resource, error) {
 	var p apiPage
 	if err := s.c.do(ctx, http.MethodGet, "/wiki/api/v2/pages/"+id+"?body-format=storage", nil, &p); err != nil {
