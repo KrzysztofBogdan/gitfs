@@ -162,8 +162,9 @@ computed per space and merged where the full map is needed.
 
 If `Fetch` finds that a page's `spaceId` is not selected (moved to another
 space on Confluence), it drops the page from the tree and returns
-`adapter.ErrNotFound`. The engine already treats that as deleted on the
-remote.
+`adapter.ErrNotFound`, as for a deleted page. `List` never reports such a
+page (it is in no selected space's page list), so `pull` removes its file as
+deleted on the remote.
 
 ### 4.5 Space-dependent helpers
 
@@ -257,8 +258,8 @@ These appear the next time the page's version changes, or with
 | move a page from `hf/…` to `eng/…` | refused: `moving pages between spaces is not supported` |
 | move to the space root | refused, as today |
 
-Refusals appear in `status`, `commit --dry-run` and `commit`, as Check
-results do today.
+Refusals appear in `commit --dry-run` and `commit`, as Check results do
+today (`status` does not call the remote).
 
 ## 7. Errors
 
