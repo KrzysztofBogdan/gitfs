@@ -102,9 +102,15 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 		}
 		local, changed := localByID[item.ID]
 		switch {
+		case deletedLocally[item.ID] && o.Force:
+			if err := e.Store(res, entry.Path); err != nil {
+				return r, err
+			}
+			r.Updated++
+			say("  ~  %s   (forced, restored)", res.Path)
 		case deletedLocally[item.ID]:
 			r.Conflicts++
-			say("  C  %s   deleted locally, changed on remote", entry.Path)
+			say("  C  %s   deleted locally, changed on remote; gfs resolve --ours keeps the deletion, --theirs restores it", entry.Path)
 		case changed && local.Status == 'C':
 			if !o.Force {
 				r.Conflicts++

@@ -229,3 +229,26 @@ func TestCommitInvalid(t *testing.T) {
 		t.Fatalf("%+v\n%s", r, out)
 	}
 }
+
+func TestCommitDeletesChildrenBeforeParent(t *testing.T) {
+	// Confluence re-parents the children of a deleted page, so a parent deleted
+	// first would leave its children changed on the remote and undeletable.
+	env, ad, out := cloned(t)
+	ad.Remote.Put("3", "a/one/child.xml", `<note><title>Child</title></note>`)
+	ad.Remote.Put("4", "a/one/child/grandchild.xml", `<note><title>Grandchild</title></note>`)
+	pull(t, env, PullOpts{})
+	for _, p := range []string{"a/one.xml", "a/one/child.xml", "a/one/child/grandchild.xml"} {
+		env.Tree.Remove(p)
+	}
+	out.Reset()
+	if r := commit(t, env, CommitOpts{Allow: map[string]bool{"delete": true}}); r.ExitCode() != 0 {
+		t.Fatalf("%+v\n%s", r, out)
+	}
+	got := out.String()
+	grandchild := strings.Index(got, "a/one/child/grandchild.xml")
+	child := strings.Index(got, "a/one/child.xml")
+	parent := strings.Index(got, "a/one.xml")
+	if grandchild < 0 || grandchild > child || child > parent {
+		t.Fatalf("deletes must run deepest first:\n%s", got)
+	}
+}

@@ -55,3 +55,36 @@ func TestResolveNotConflicted(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestResolveOursKeepsLocalDeletionOfRemotelyMovedFile(t *testing.T) {
+	// given
+	env, ad, out := cloned(t)
+	env.Tree.Remove("a/b/two.xml")
+	ad.Remote.Move("2", "two.xml")
+	pull(t, env, PullOpts{})
+	// when
+	if err := Resolve(ctx, env, []string{"a/b/two.xml"}, true); err != nil {
+		t.Fatal(err)
+	}
+	r := commit(t, env, CommitOpts{Allow: map[string]bool{"delete": true}})
+	// then
+	if _, ok := ad.Remote.Get("2"); ok || r.ExitCode() != 0 {
+		t.Fatalf("ours must keep the deletion and let commit run it: %+v\n%s", r, out)
+	}
+}
+
+func TestResolveTheirsRestoresLocallyDeletedFile(t *testing.T) {
+	// given
+	env, ad, _ := cloned(t)
+	env.Tree.Remove("a/b/two.xml")
+	ad.Remote.Move("2", "two.xml")
+	pull(t, env, PullOpts{})
+	// when
+	if err := Resolve(ctx, env, []string{"a/b/two.xml"}, false); err != nil {
+		t.Fatal(err)
+	}
+	// then
+	if got := read(t, env, "two.xml"); !strings.Contains(got, "<title>Two</title>") || len(status(t, env)) != 0 {
+		t.Fatalf("theirs must restore the remote file and leave a clean tree: %s %+v", got, status(t, env))
+	}
+}

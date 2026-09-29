@@ -46,6 +46,8 @@ func category(fc changes.FileChange) int {
 	return 1
 }
 
+func depth(p string) int { return strings.Count(p, "/") }
+
 func plural(n int, word string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, word)
@@ -92,7 +94,14 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	sort.SliceStable(cs, func(i, j int) bool { return category(cs[i]) < category(cs[j]) })
+	sort.SliceStable(cs, func(i, j int) bool {
+		ci, cj := category(cs[i]), category(cs[j])
+		if ci == 3 && cj == 3 {
+			// children first: a service may re-parent the children of a deleted resource
+			return depth(cs[i].Path) > depth(cs[j].Path)
+		}
+		return ci < cj
+	})
 	d := &policy.Decider{Policy: pol, Allowed: o.Allow, Prompt: e.Prompt}
 	var r Report
 	for _, fc := range cs {

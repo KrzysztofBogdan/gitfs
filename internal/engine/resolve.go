@@ -24,6 +24,13 @@ func Resolve(ctx context.Context, e *Env, paths []string, ours bool) error {
 			fmt.Fprintf(e.Out, "resolved %s (%s)\n", p, side)
 			continue
 		}
+		if en, tracked := e.Index.ByPath(p); tracked && !e.Tree.Exists(p) {
+			if err := e.resolveDeleted(ctx, en.ID, p, ours); err != nil {
+				return err
+			}
+			fmt.Fprintf(e.Out, "resolved %s (%s)\n", p, side)
+			continue
+		}
 		data, err := e.Tree.ReadFile(p)
 		if err != nil {
 			return err
@@ -65,6 +72,20 @@ func Resolve(ctx context.Context, e *Env, paths []string, ours bool) error {
 		fmt.Fprintf(e.Out, "resolved %s (%s)\n", p, side)
 	}
 	return nil
+}
+
+// resolveDeleted settles a file deleted locally but changed on the remote:
+// ours takes the remote as the new base so the deletion commits; theirs restores the remote file.
+func (e *Env) resolveDeleted(ctx context.Context, id, p string, ours bool) error {
+	remote, err := e.Session.Fetch(ctx, id)
+	if err != nil {
+		return fmt.Errorf("%s: fetch remote %s: %w", p, id, err)
+	}
+	if ours {
+		remote.Path = p
+		return e.StoreBase(remote, "")
+	}
+	return e.Store(remote, p)
 }
 
 func pickSide(text string, ours bool) string {

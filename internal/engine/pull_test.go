@@ -124,3 +124,16 @@ func TestPullNeverTouchesUntracked(t *testing.T) {
 		t.Fatalf("%s", out)
 	}
 }
+
+func TestPullForceRestoresLocallyDeletedFileChangedOnRemote(t *testing.T) {
+	// given
+	env, ad, out := cloned(t)
+	env.Tree.Remove("a/b/two.xml")
+	ad.Remote.Move("2", "two.xml")
+	// when
+	r := pull(t, env, PullOpts{Force: true})
+	// then
+	if r.Conflicts != 0 || !env.Tree.Exists("two.xml") || len(status(t, env)) != 0 {
+		t.Fatalf("force must take the remote version: %+v\n%s", r, out)
+	}
+}
