@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence/cftest"
 )
@@ -181,5 +182,59 @@ func TestConfluenceCloneForms(t *testing.T) {
 	}
 	if out, code := gfs(t, "clone", "confluence://acme.atlassian.net/wiki/ENG?"+base, "z"); code == 0 || !strings.Contains(out, "want confluence://<site>") {
 		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
+// backdate pretends the last pull ran 20 minutes ago, so the search window no
+// longer reaches content from before the next pull's own cursor.
+func backdate(t *testing.T) {
+	t.Helper()
+	b, err := os.ReadFile(".gfs/index")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().UTC().Add(-20 * time.Minute).Format(time.RFC3339)
+	b = regexp.MustCompile(`(?m)^# cursor .*$`).ReplaceAll(b, []byte("# cursor "+old))
+	os.WriteFile(".gfs/index", b, 0o644)
+}
+
+// quarterHourAgo stamps content as made 15 minutes ago: after a backdated
+// cursor, outside a fresh cursor's window.
+func quarterHourAgo() string {
+	return time.Now().UTC().Add(-15 * time.Minute).Format("2006-01-02T15:04:05.000Z")
+}
+
+// A pull limited to some paths must not move the cursor past changes it skipped.
+func TestConfluencePathPullKeepsCursor(t *testing.T) {
+	srv := siteServer(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustRun(t, 0, "clone", "confluence://acme.atlassian.net?base="+srv.URL, "wt")
+	t.Chdir(filepath.Join(dir, "wt"))
+	backdate(t)
+	srv.AddComment(cftest.Comment{PageID: "81002", Storage: "<p>late</p>", CreatedAt: quarterHourAgo()})
+	mustRun(t, 0, "pull", "ops")
+	mustContain(t, mustRun(t, 0, "pull"), "~  eng/Home/Architecture.xml")
+}
+
+// A page skipped as conflicted must get its comment once the conflict is resolved.
+func TestConfluenceConflictedPullKeepsCursor(t *testing.T) {
+	srv := siteServer(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustRun(t, 0, "clone", "confluence://acme.atlassian.net?base="+srv.URL, "wt")
+	t.Chdir(filepath.Join(dir, "wt"))
+	page := "eng/Home/Architecture.xml"
+	replaceIn(t, page, "<p>a</p>", "<p>local</p>")
+	srv.EditPage("81002", func(p *cftest.Page) { p.Storage = "<p>remote</p>" })
+	mustRun(t, 1, "pull")
+	backdate(t)
+	srv.AddComment(cftest.Comment{PageID: "81002", Storage: "<p>late</p>", CreatedAt: quarterHourAgo()})
+	mustRun(t, 1, "pull") // still conflicted: the commented page is skipped
+	mustRun(t, 0, "resolve", "--theirs", page)
+	mustRun(t, 0, "pull")
+	b, _ := os.ReadFile(page)
+	if !strings.Contains(string(b), "<p>late</p>") {
+		t.Fatalf("comment lost after resolve:\n%s", b)
 	}
 }

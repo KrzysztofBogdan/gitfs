@@ -60,6 +60,10 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 		printed = true
 		fmt.Fprintf(e.Out, format+"\n", a...)
 	}
+	// A skipped page the listing sent in full (changed without a new version)
+	// would come back as a stub next time: keep the old cursor so the next
+	// listing flags it again. A path-limited pull skips pages it never looks at.
+	keepCursor := o.Filter != nil
 	listed := map[string]bool{}
 	for _, item := range l.Resources {
 		listed[item.ID] = true
@@ -114,10 +118,12 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 			r.Updated++
 			say("  ~  %s   (forced, restored)", res.Path)
 		case deletedLocally[item.ID]:
+			keepCursor = keepCursor || item.Root != nil
 			r.Conflicts++
 			say("  C  %s   deleted locally, changed on remote; gfs resolve --ours keeps the deletion, --theirs restores it", entry.Path)
 		case changed && local.Status == 'C':
 			if !o.Force {
+				keepCursor = keepCursor || item.Root != nil
 				r.Conflicts++
 				say("  C  %s   unresolved conflict; resolve first", local.Path)
 				continue
@@ -225,7 +231,9 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 	if err := e.pullAttachments(ctx, o, say, &r); err != nil {
 		return r, err
 	}
-	e.Index.Cursor = l.Cursor
+	if !keepCursor {
+		e.Index.Cursor = l.Cursor
+	}
 	if err := e.Tree.SaveIndex(e.Index); err != nil {
 		return r, err
 	}
