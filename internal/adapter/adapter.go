@@ -134,15 +134,17 @@ type Session interface {
 // Clone records the identity as [remote] email (credentials spec §6).
 type Identified interface{ Identity() string }
 
-// Progress is one step of a long List, for display. Phase is "pages" (Done of
-// Total spaces listed), "fetch" (Done of Total pages downloaded) or "done".
+// Progress is one step of a long operation, for display. Phase is "list",
+// "pages" (Done of Total spaces listed), "fetch" (Done of Total resources
+// downloaded), "wait" (Item says why and for how long) or "done".
 type Progress struct {
 	Phase       string
 	Done, Total int
 	Item        string // the space or path being worked on
 }
 
-// Reporter is implemented by sessions that report progress while listing.
+// Reporter is implemented by sessions that report progress while listing,
+// and retry waits at any time.
 type Reporter interface{ SetProgress(func(Progress)) }
 
 // Normalizer is implemented by adapters that accept several spellings of a

@@ -38,7 +38,7 @@ func newClone() *cobra.Command {
 				return err
 			}
 			defer sess.Close()
-			progress, out := progressBar(cmd, quiet).attach(sess, cmd.OutOrStdout())
+			progress, out := attachProgress(cmd, quiet, sess, cmd.OutOrStdout())
 			_, err = engine.Clone(cmd.Context(), ad, sess, raw, dir, out, progress)
 			return err
 		},

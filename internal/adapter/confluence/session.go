@@ -37,6 +37,7 @@ type session struct {
 func openSession(ctx context.Context, t target) (*session, error) {
 	s := &session{c: newClient(t), sel: t.sel, spaces: map[string]*space{}, byID: map[string]*space{},
 		tree: map[string]pageRef{}, names: map[string]string{}, now: time.Now, report: func(adapter.Progress) {}}
+	s.c.onWait = func(msg string) { s.report(adapter.Progress{Phase: "wait", Item: msg}) }
 	if err := s.resolveSpaces(ctx); err != nil {
 		return nil, err
 	}

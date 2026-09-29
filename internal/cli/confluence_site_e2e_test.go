@@ -252,3 +252,15 @@ func TestProgressOffWithoutTerminal(t *testing.T) {
 		t.Fatalf("progress drawn without a terminal: %q", out)
 	}
 }
+
+func TestConfluenceCloneSurvivesRateLimit(t *testing.T) {
+	srv := siteServer(t)
+	srv.Failures = map[string]*cftest.Failure{
+		"GET /wiki/api/v2/spaces/100/pages": {Status: 429, Times: 2, RetryAfter: "0"},
+		"GET /wiki/api/v2/pages/81002":      {Status: 429, Times: 1, RetryAfter: "0"},
+	}
+	dir := t.TempDir()
+	t.Chdir(dir)
+	out := mustRun(t, 0, "clone", "confluence://acme.atlassian.net?base="+srv.URL, "wt")
+	mustContain(t, out, "Rate limited by Confluence, retrying in 0s…", "Cloned 3 resources")
+}

@@ -1,9 +1,11 @@
 package confluence
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence/cftest"
 )
 
 func record(sess *session) *[]adapter.Progress {
@@ -65,4 +67,20 @@ func TestFullListingDownloadsNoBodies(t *testing.T) {
 	if n := bodyFetches(s.TakeRequests()); n != 0 {
 		t.Fatalf("%d page downloads in a full listing", n)
 	}
+}
+
+func TestSessionReportsRetryWaits(t *testing.T) {
+	s := site(t)
+	s.Failures = map[string]*cftest.Failure{"GET /wiki/api/v2/spaces/100/pages": {Status: 429, Times: 1, RetryAfter: "0"}}
+	sess := open(t, s, selection{typ: "global"})
+	got := record(sess)
+	if _, err := sess.List(bg, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range *got {
+		if p.Phase == "wait" && strings.Contains(p.Item, "Rate limited by Confluence") {
+			return
+		}
+	}
+	t.Fatalf("no wait reported: %+v", *got)
 }

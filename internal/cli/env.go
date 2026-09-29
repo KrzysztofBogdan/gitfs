@@ -67,6 +67,9 @@ func openEnv(cmd *cobra.Command, lock bool) (*engine.Env, string, func(), error)
 		unlock()
 		return nil, "", nil, err
 	}
+	if r, ok := sess.(adapter.Reporter); ok {
+		r.SetProgress(waitNotice(cmd.ErrOrStderr())) // commit, get, …: retry waits as lines
+	}
 	env := &engine.Env{Tree: t, Index: ix, Atts: atts, Adapter: ad, Session: sess, Out: cmd.OutOrStdout(), Prompt: prompter(), Now: time.Now}
 	return env, raw, func() { sess.Close(); unlock() }, nil
 }

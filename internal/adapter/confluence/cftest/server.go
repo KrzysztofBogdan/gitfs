@@ -39,13 +39,21 @@ type Space struct {
 	Status  string // "current" (default) or "archived"
 }
 
+// Failure is a transient error: Status (with Retry-After when set) for the next Times requests.
+type Failure struct {
+	Status     int
+	Times      int
+	RetryAfter string
+}
+
 type Server struct {
 	*httptest.Server
 	PageLimit int
 	Requests  []string
-	Fail      map[string]int    // "METHOD /path" -> status returned instead of handling the request
-	Accounts  map[string]string // email -> token for GET /wiki/rest/api/user/current; nil accepts any credentials
-	Clock     func() time.Time  // time for Stamp and search windows; nil is time.Now
+	Fail      map[string]int      // "METHOD /path" -> status returned instead of handling the request
+	Failures  map[string]*Failure // "METHOD /path" -> a failure returned Times times, then the request is served
+	Accounts  map[string]string   // email -> token for GET /wiki/rest/api/user/current; nil accepts any credentials
+	Clock     func() time.Time    // time for Stamp and search windows; nil is time.Now
 
 	mu          sync.Mutex
 	spaces      map[string]*Space // by key
@@ -90,6 +98,14 @@ func New() *Server {
 		s.Requests = append(s.Requests, r.Method+" "+r.URL.Path)
 		if u, p, ok := r.BasicAuth(); !ok || u == "" || p == "" {
 			http.Error(w, `{"message":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		if f := s.Failures[r.Method+" "+r.URL.Path]; f != nil && f.Times > 0 {
+			f.Times--
+			if f.RetryAfter != "" {
+				w.Header().Set("Retry-After", f.RetryAfter)
+			}
+			fail(w, f.Status, "injected transient failure")
 			return
 		}
 		if code := s.Fail[r.Method+" "+r.URL.Path]; code != 0 {

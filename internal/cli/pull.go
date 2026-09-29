@@ -22,7 +22,7 @@ func newPull() *cobra.Command {
 			if o.Filter, err = changes.PathFilter(env.Tree, args); err != nil {
 				return usage("%v", err)
 			}
-			env.Progress, env.Out = progressBar(cmd, quiet).attach(env.Session, env.Out)
+			env.Progress, env.Out = attachProgress(cmd, quiet, env.Session, env.Out)
 			r, err := engine.Pull(cmd.Context(), env, o)
 			if err != nil {
 				return err

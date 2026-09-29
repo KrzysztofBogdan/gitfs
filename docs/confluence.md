@@ -241,6 +241,16 @@ attachments. They arrive the next time the page is edited, or with
 gfs pull --full      # download every page
 ```
 
+## Rate limits and outages
+
+When Confluence answers 429 (too many requests), gfs waits for its
+`Retry-After` and retries, for any request: a 429 means nothing was done.
+502, 503, 504 and dropped connections are retried only for reads; a failed
+write is reported as failed, since Confluence may have applied it. Waits back
+off from 1s up to 60s, at most 6 attempts and 5 minutes per request, and each
+wait is shown (`Rate limited by Confluence, retrying in 12s…`). Ctrl-C stops
+a wait. Attachment uploads are not retried.
+
 ## Attachments
 
 `clone` and `pull` list attachments in each page but never download bytes.

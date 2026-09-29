@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -45,10 +46,102 @@ type client struct {
 	t    target
 	hc   *http.Client // JSON calls, with a timeout
 	xfer *http.Client // attachment bytes: no timeout, the context cancels
+
+	sleep  func(context.Context, time.Duration) error // waits between retries
+	now    func() time.Time
+	onWait func(msg string) // told before each retry wait; never nil
 }
 
 func newClient(t target) *client {
-	return &client{t: t, hc: &http.Client{Timeout: 60 * time.Second}, xfer: &http.Client{}}
+	return &client{t: t, hc: &http.Client{Timeout: 60 * time.Second}, xfer: &http.Client{},
+		sleep: sleepCtx, now: time.Now, onWait: func(string) {}}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+const (
+	maxAttempts  = 6
+	maxTotalWait = 5 * time.Minute
+	maxBackoff   = time.Minute
+)
+
+// send runs one request with retries. Confluence answers 429 when an account
+// sends too much; the request was not processed, so any method is retried
+// after Retry-After. 502/503/504 and network errors are retried only for GET:
+// a write may already have been applied. build makes a fresh request per attempt.
+func (c *client) send(ctx context.Context, hc *http.Client, build func() (*http.Request, error)) (*http.Response, error) {
+	var waited time.Duration
+	for attempt := 1; ; attempt++ {
+		req, err := build()
+		if err != nil {
+			return nil, err
+		}
+		resp, err := hc.Do(req)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		msg, retry := retryReason(req.Method, status, err)
+		if !retry || attempt == maxAttempts {
+			return resp, err
+		}
+		d := c.retryWait(attempt, resp)
+		if waited+d > maxTotalWait {
+			return resp, err
+		}
+		if resp != nil {
+			io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+			resp.Body.Close()
+		}
+		c.onWait(fmt.Sprintf("%s, retrying in %s…", msg, d.Round(time.Second)))
+		if err := c.sleep(ctx, d); err != nil {
+			return nil, err
+		}
+		waited += d
+	}
+}
+
+func retryReason(method string, status int, err error) (string, bool) {
+	switch {
+	case status == http.StatusTooManyRequests:
+		return "Rate limited by Confluence", true
+	case method != http.MethodGet:
+		return "", false
+	case err != nil:
+		return "Connection error (" + err.Error() + ")", true
+	case status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout:
+		return fmt.Sprintf("Confluence unavailable (HTTP %d)", status), true
+	}
+	return "", false
+}
+
+// retryWait is Retry-After (seconds or an HTTP date) when the server sent it,
+// else exponential backoff from 1s with up to 25% jitter, capped at maxBackoff.
+func (c *client) retryWait(attempt int, resp *http.Response) time.Duration {
+	if resp != nil {
+		if ra := resp.Header.Get("Retry-After"); ra != "" {
+			if n, err := strconv.Atoi(ra); err == nil && n >= 0 {
+				return time.Duration(n) * time.Second
+			}
+			if t, err := http.ParseTime(ra); err == nil {
+				return max(t.Sub(c.now()), 0)
+			}
+		}
+	}
+	d := min(time.Second<<(attempt-1), maxBackoff)
+	return d + time.Duration(rand.Int64N(int64(d)/4+1))
 }
 
 func (c *client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
@@ -78,22 +171,25 @@ func apiError(resp *http.Response) error {
 }
 
 func (c *client) do(ctx context.Context, method, path string, in, out any) error {
-	var body io.Reader
+	var payload []byte
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
 			return err
 		}
-		body = bytes.NewReader(b)
+		payload = b
 	}
-	req, err := c.newRequest(ctx, method, path, body)
-	if err != nil {
-		return err
-	}
-	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := c.hc.Do(req)
+	resp, err := c.send(ctx, c.hc, func() (*http.Request, error) {
+		var body io.Reader
+		if payload != nil {
+			body = bytes.NewReader(payload)
+		}
+		req, err := c.newRequest(ctx, method, path, body)
+		if err == nil && payload != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		return req, err
+	})
 	if err != nil {
 		return err
 	}
@@ -137,12 +233,13 @@ func (c *client) paginate(ctx context.Context, path string, each func(json.RawMe
 
 // download streams the body of GET path into w; redirects are followed.
 func (c *client) download(ctx context.Context, path string, w io.Writer) (int64, error) {
-	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Accept", "*/*")
-	resp, err := c.xfer.Do(req)
+	resp, err := c.send(ctx, c.xfer, func() (*http.Request, error) {
+		req, err := c.newRequest(ctx, http.MethodGet, path, nil)
+		if err == nil {
+			req.Header.Set("Accept", "*/*")
+		}
+		return req, err
+	})
 	if err != nil {
 		return 0, err
 	}

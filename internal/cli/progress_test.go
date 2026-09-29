@@ -92,3 +92,29 @@ func TestBarWriterClearsLine(t *testing.T) {
 		t.Fatalf("bar %q stdout %q", out.String(), stdout.String())
 	}
 }
+
+func TestBarWaitLineKeepsRate(t *testing.T) {
+	b, out, advance := testBar(100)
+	b.update(adapter.Progress{Phase: "fetch", Done: 0, Total: 1000})
+	advance(10 * time.Second)
+	b.update(adapter.Progress{Phase: "fetch", Done: 100, Total: 1000})
+	b.update(adapter.Progress{Phase: "wait", Item: "Rate limited by Confluence, retrying in 12s…"})
+	if got := frame(out); got != "Rate limited by Confluence, retrying in 12s…" {
+		t.Fatalf("%q", got)
+	}
+	advance(12 * time.Second)
+	b.update(adapter.Progress{Phase: "fetch", Done: 110, Total: 1000})
+	if got := frame(out); !strings.Contains(got, "5/s") {
+		t.Fatalf("a wait must not restart the rate (110 pages in 22s): %q", got)
+	}
+}
+
+func TestWaitNoticeWithoutTerminal(t *testing.T) {
+	var out bytes.Buffer
+	n := waitNotice(&out)
+	n(adapter.Progress{Phase: "fetch", Done: 1, Total: 2})
+	n(adapter.Progress{Phase: "wait", Item: "Rate limited by Confluence, retrying in 3s…"})
+	if out.String() != "Rate limited by Confluence, retrying in 3s…\n" {
+		t.Fatalf("%q", out.String())
+	}
+}

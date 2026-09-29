@@ -29,6 +29,7 @@ type bar struct {
 	phase     string
 	last      time.Time // last draw
 	shown     bool      // a line is on screen
+	fetching  bool      // inside a fetch phase; a retry wait does not end it
 	start     time.Time // fetch phase start, for the rate
 	startDone int
 }
@@ -47,28 +48,49 @@ func progressBar(cmd *cobra.Command, quiet bool) *bar {
 	}}
 }
 
-// attach wires the bar into a session (for listing detail) and returns the
-// progress func for the engine and an output writer that keeps lines clean.
-func (b *bar) attach(sess adapter.Session, out io.Writer) (func(adapter.Progress), io.Writer) {
+// attachProgress wires a bar into the session (listing detail, retry waits)
+// and returns the progress func for the engine and an output writer that
+// keeps lines clean. Without a bar, the session's retry waits are still
+// printed, one line each.
+func attachProgress(cmd *cobra.Command, quiet bool, sess adapter.Session, out io.Writer) (func(adapter.Progress), io.Writer) {
+	b := progressBar(cmd, quiet)
+	r, reports := sess.(adapter.Reporter)
 	if b == nil {
+		if reports {
+			r.SetProgress(waitNotice(cmd.ErrOrStderr()))
+		}
 		return nil, out
 	}
-	if r, ok := sess.(adapter.Reporter); ok {
+	if reports {
 		r.SetProgress(b.update)
 	}
 	return b.update, b.writer(out)
+}
+
+// waitNotice prints retry waits as lines, for output that is not a terminal.
+func waitNotice(w io.Writer) func(adapter.Progress) {
+	return func(p adapter.Progress) {
+		if p.Phase == "wait" {
+			fmt.Fprintln(w, p.Item)
+		}
+	}
 }
 
 func (b *bar) update(p adapter.Progress) {
 	now := b.now()
 	if p.Phase == "done" {
 		b.clear()
-		b.phase = ""
+		b.phase, b.fetching = "", false
 		return
 	}
 	changed := p.Phase != b.phase
-	if changed && p.Phase == "fetch" {
-		b.start, b.startDone = now, p.Done
+	switch p.Phase {
+	case "fetch":
+		if !b.fetching {
+			b.fetching, b.start, b.startDone = true, now, p.Done
+		}
+	case "list", "pages":
+		b.fetching = false
 	}
 	finished := p.Total > 0 && p.Done >= p.Total
 	if !changed && !finished && b.shown && now.Sub(b.last) < redrawEvery {
@@ -83,6 +105,8 @@ func (b *bar) line(p adapter.Progress, now time.Time) string {
 	switch p.Phase {
 	case "list":
 		return "Listing…"
+	case "wait":
+		return p.Item
 	case "pages":
 		return fmt.Sprintf("Listing   %d/%d spaces  %s", p.Done, p.Total, p.Item)
 	case "fetch":
