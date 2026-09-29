@@ -13,8 +13,8 @@ import (
 
 var bg = context.Background()
 
-// space builds ENG with Home > {Architecture, Runbooks}.
-func space(t *testing.T) (*cftest.Server, *session) {
+// engSpace builds ENG with Home > {Architecture, Runbooks}.
+func engSpace(t *testing.T) (*cftest.Server, *session) {
 	t.Helper()
 	s := cftest.New()
 	t.Cleanup(s.Close)
@@ -39,7 +39,7 @@ func byPath(l adapter.Listing) map[string]adapter.Resource {
 }
 
 func TestListAndFetch(t *testing.T) {
-	_, sess := space(t)
+	_, sess := engSpace(t)
 	l, err := sess.List(bg, "")
 	if err != nil || !l.Full || len(l.Resources) != 3 {
 		t.Fatalf("%+v %v", l, err)
@@ -92,7 +92,7 @@ func setText(n *xmltree.Node, name, text string) {
 }
 
 func TestUpdateTitleBodyAndLock(t *testing.T) {
-	srv, sess := space(t)
+	srv, sess := engSpace(t)
 	base := resource(t, sess, "98120")
 	local := &adapter.Resource{ID: base.ID, Path: base.Path, Root: base.Root.Clone()}
 	setText(local.Root, "title", "Architecture v2")
@@ -112,7 +112,7 @@ func TestUpdateTitleBodyAndLock(t *testing.T) {
 }
 
 func TestCreateUnderParent(t *testing.T) {
-	srv, sess := space(t)
+	srv, sess := engSpace(t)
 	root, _ := xmltree.ParseString(`<page><title>Rollback</title><labels><label>runbook</label></labels>` +
 		`<body type="application/xhtml+xml"><ol><li>Redeploy <code>v2.3.1</code></li></ol></body><comment><p>draft</p></comment></page>`)
 	res := apply(sess, &adapter.Resource{Path: "eng/Home/Runbooks/Rollback.xml", Root: root}, nil, adapter.Action{Verb: "create"})
@@ -137,7 +137,7 @@ func TestCreateUnderParent(t *testing.T) {
 }
 
 func TestMoveAndRename(t *testing.T) {
-	srv, sess := space(t)
+	srv, sess := engSpace(t)
 	base := resource(t, sess, "98120")
 	local := &adapter.Resource{ID: base.ID, Path: "eng/Home/Runbooks/Arch.xml", Root: base.Root.Clone()}
 	res := apply(sess, local, base, adapter.Action{Verb: "move", From: base.Path, To: local.Path})
@@ -154,7 +154,7 @@ func TestMoveAndRename(t *testing.T) {
 }
 
 func TestLabelsCommentsDelete(t *testing.T) {
-	srv, sess := space(t)
+	srv, sess := engSpace(t)
 	base := resource(t, sess, "98120")
 	local := &adapter.Resource{ID: base.ID, Path: base.Path, Root: base.Root.Clone()}
 	lbl, _ := xmltree.ParseString(`<labels><label>architecture</label></labels>`)
@@ -183,7 +183,7 @@ func TestLabelsCommentsDelete(t *testing.T) {
 }
 
 func TestCheckDuplicateTitle(t *testing.T) {
-	_, sess := space(t)
+	_, sess := engSpace(t)
 	root, _ := xmltree.ParseString(`<page><title>Runbooks</title><body type="application/xhtml+xml"/></page>`)
 	res := sess.Check(bg, adapter.ApplyRequest{Local: &adapter.Resource{Path: "eng/Home/Runbooks (2).xml", Root: root},
 		Actions: []adapter.Action{{Verb: "create"}}, IDByPath: known})

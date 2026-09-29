@@ -16,7 +16,7 @@ func opener(files map[string]string) func(string) (io.ReadCloser, error) {
 }
 
 func TestAttachmentsFetchDownloadApply(t *testing.T) {
-	srv, sess := space(t)
+	srv, sess := engSpace(t)
 	att := srv.AddAttachment(cftest.Attachment{PageID: "98130", Title: "rollback-flow.png", MediaType: "image/png", Data: []byte("png1")})
 	res := resource(t, sess, "98130")
 	want := `<attachment id="` + att.ID + `" name="rollback-flow.png" type="image/png" size="4" version="1" created="2026-03-01T10:00:00.000Z" author="Me"/>`
@@ -60,7 +60,7 @@ func TestAttachmentsFetchDownloadApply(t *testing.T) {
 }
 
 func TestCreatePageWithAttachment(t *testing.T) {
-	srv, sess := space(t)
+	srv, sess := engSpace(t)
 	root, _ := xmltree.ParseString(`<page><title>Rollback</title><body type="application/xhtml+xml"><p>x</p></body></page>`)
 	out := sess.Apply(bg, adapter.ApplyRequest{Local: &adapter.Resource{Path: "eng/Home/Runbooks/Rollback.xml", Root: root},
 		IDByPath: known, Open: opener(map[string]string{"eng/Home/Runbooks/Rollback.files/f.txt": "f"}),
@@ -74,7 +74,7 @@ func TestCreatePageWithAttachment(t *testing.T) {
 }
 
 func TestAttachmentCheckAndDescribe(t *testing.T) {
-	srv, sess := space(t)
+	srv, sess := engSpace(t)
 	srv.AddAttachment(cftest.Attachment{PageID: "98130", Title: "a.png"})
 	res := resource(t, sess, "98130")
 	chk := sess.Check(bg, adapter.ApplyRequest{Local: res, Base: res, IDByPath: known,

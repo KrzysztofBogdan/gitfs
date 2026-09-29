@@ -1,4 +1,4 @@
-// Package confluence mirrors one Confluence Cloud space as a page tree of XML files.
+// Package confluence mirrors the spaces of a Confluence Cloud site as page trees of XML files.
 package confluence
 
 import (

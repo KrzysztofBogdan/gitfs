@@ -20,15 +20,15 @@ func TestSanitize(t *testing.T) {
 
 func TestPagePaths(t *testing.T) {
 	got := pagePaths("eng", []pageRef{
-		{"98001", "Home", ""},
-		{"98120", "Architecture", "98001"},
-		{"98130", "Runbooks", "98001"},
-		{"98871", "Rollback", "98130"},
-		{"99", "Orphan", "55555"},
-		{"100", "Dup", "98001"},
-		{"1000", "dup", "98001"},
-		{"7", "a", "8"},
-		{"8", "b", "7"},
+		{ID: "98001", Title: "Home", Parent: ""},
+		{ID: "98120", Title: "Architecture", Parent: "98001"},
+		{ID: "98130", Title: "Runbooks", Parent: "98001"},
+		{ID: "98871", Title: "Rollback", Parent: "98130"},
+		{ID: "99", Title: "Orphan", Parent: "55555"},
+		{ID: "100", Title: "Dup", Parent: "98001"},
+		{ID: "1000", Title: "dup", Parent: "98001"},
+		{ID: "7", Title: "a", Parent: "8"},
+		{ID: "8", Title: "b", Parent: "7"},
 	})
 	want := map[string]string{
 		"98001": "eng/Home.xml",

@@ -9,7 +9,11 @@ import (
 	"github.com/KrzysztofBogdan/gitfs/internal/attach"
 )
 
-type pageRef struct{ ID, Title, Parent string }
+type pageRef struct {
+	ID, Title, Parent string
+	Space             string // space id
+	Version           int
+}
 
 func sanitize(title string) string {
 	var b strings.Builder

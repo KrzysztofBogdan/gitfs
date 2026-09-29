@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/changes"
@@ -17,32 +18,111 @@ import (
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
 
+type space struct {
+	key, id, dir string // "HF", "98307", "hf"
+	loaded       bool   // its pages are in tree
+}
+
 type session struct {
-	c        *client
-	spaceKey string
-	spaceID  string
-	spaceDir string
-	tree     map[string]pageRef // nil until loaded
-	names    map[string]string
+	c      *client
+	sel    selection
+	spaces map[string]*space  // by dir
+	byID   map[string]*space  // by space id
+	tree   map[string]pageRef // pages of the loaded spaces
+	names  map[string]string
+	now    func() time.Time
 }
 
 func openSession(ctx context.Context, t target) (*session, error) {
-	if len(t.sel.keys) != 1 {
-		return nil, errors.New("a working tree with several spaces needs the multi-space session") // replaced in Task 4
-	}
-	key := t.sel.keys[0]
-	s := &session{c: newClient(t), spaceKey: key, spaceDir: strings.ToLower(key), names: map[string]string{}}
-	var resp struct {
-		Results []struct{ ID, Key string } `json:"results"`
-	}
-	if err := s.c.do(ctx, http.MethodGet, "/wiki/api/v2/spaces?keys="+url.QueryEscape(key), nil, &resp); err != nil {
+	s := &session{c: newClient(t), sel: t.sel, spaces: map[string]*space{}, byID: map[string]*space{},
+		tree: map[string]pageRef{}, names: map[string]string{}, now: time.Now}
+	if err := s.resolveSpaces(ctx); err != nil {
 		return nil, err
 	}
-	if len(resp.Results) == 0 {
-		return nil, fmt.Errorf("space %s not found or not visible", key)
-	}
-	s.spaceID = resp.Results[0].ID
 	return s, nil
+}
+
+// resolveSpaces turns the selection into spaces (site clone spec §4.1).
+func (s *session) resolveSpaces(ctx context.Context) error {
+	path := "/wiki/api/v2/spaces?limit=250"
+	if len(s.sel.keys) > 0 {
+		esc := make([]string, len(s.sel.keys))
+		for i, k := range s.sel.keys {
+			esc[i] = url.QueryEscape(k)
+		}
+		path += "&keys=" + strings.Join(esc, ",") // no status: a named archived space is included
+	} else {
+		path += "&status=current"
+		if s.sel.typ != "all" {
+			path += "&type=" + s.sel.typ
+		}
+	}
+	excluded := map[string]bool{}
+	for _, k := range s.sel.exclude {
+		excluded[k] = true
+	}
+	err := s.c.paginate(ctx, path, func(raw json.RawMessage) error {
+		var a struct{ ID, Key string }
+		if err := json.Unmarshal(raw, &a); err != nil {
+			return err
+		}
+		if !excluded[a.Key] {
+			sp := &space{key: a.Key, id: a.ID, dir: strings.ToLower(a.Key)}
+			s.spaces[sp.dir], s.byID[sp.id] = sp, sp
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	var missing []string
+	for _, k := range s.sel.keys {
+		if s.spaces[strings.ToLower(k)] == nil && !excluded[k] {
+			missing = append(missing, k)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("space %s not found or not visible", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func (s *session) sortedSpaces() []*space {
+	out := make([]*space, 0, len(s.spaces))
+	for _, sp := range s.spaces {
+		out = append(out, sp)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].dir < out[j].dir })
+	return out
+}
+
+func (s *session) dirList() string {
+	var ds []string
+	for _, sp := range s.sortedSpaces() {
+		ds = append(ds, sp.dir)
+	}
+	return strings.Join(ds, ", ")
+}
+
+// spaceFor maps a working path's first folder to its space (site clone spec §4.5).
+func (s *session) spaceFor(p string) (*space, error) {
+	dir, _, ok := strings.Cut(p, "/")
+	if !ok {
+		return nil, fmt.Errorf("pages must live in a space folder (%s)", s.dirList())
+	}
+	sp := s.spaces[dir]
+	if sp == nil {
+		return nil, fmt.Errorf("no space %q in this tree; gfs does not create spaces (spaces: %s)", dir, s.dirList())
+	}
+	return sp, nil
+}
+
+// keyOf is a bridge until Task 5: the space key of a working path, or "".
+func (s *session) keyOf(p string) string {
+	if sp, err := s.spaceFor(p); err == nil {
+		return sp.key
+	}
+	return ""
 }
 
 func (s *session) Close() error { return nil }
@@ -50,28 +130,53 @@ func (s *session) Close() error { return nil }
 // Identity is the account this session acts as (adapter.Identified).
 func (s *session) Identity() string { return s.c.t.email }
 
-func (s *session) loadTree(ctx context.Context) error {
-	tree := map[string]pageRef{}
-	err := s.c.paginate(ctx, "/wiki/api/v2/spaces/"+s.spaceID+"/pages?limit=250", func(raw json.RawMessage) error {
+// load reads sp's page tree once per session (site clone spec §4.2).
+func (s *session) load(ctx context.Context, sp *space) error {
+	if sp.loaded {
+		return nil
+	}
+	fresh := map[string]pageRef{}
+	err := s.c.paginate(ctx, "/wiki/api/v2/spaces/"+sp.id+"/pages?limit=250", func(raw json.RawMessage) error {
 		var p apiPage
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return err
 		}
-		tree[p.ID] = pageRef{ID: p.ID, Title: p.Title, Parent: p.ParentID}
+		fresh[p.ID] = pageRef{ID: p.ID, Title: p.Title, Parent: p.ParentID, Space: sp.id, Version: p.Version.Number}
 		return nil
 	})
-	if err == nil {
-		s.tree = tree
+	if err != nil {
+		return fmt.Errorf("space %s: %w", sp.key, err)
 	}
-	return err
+	for id, r := range s.tree {
+		if r.Space == sp.id {
+			delete(s.tree, id)
+		}
+	}
+	for id, r := range fresh {
+		s.tree[id] = r
+	}
+	sp.loaded = true
+	return nil
 }
 
-func (s *session) paths() map[string]string {
-	refs := make([]pageRef, 0, len(s.tree))
-	for _, r := range s.tree {
-		refs = append(refs, r)
+func (s *session) loadAll(ctx context.Context) error {
+	for _, sp := range s.sortedSpaces() {
+		if err := s.load(ctx, sp); err != nil {
+			return err
+		}
 	}
-	return pagePaths(s.spaceDir, refs)
+	return nil
+}
+
+// paths maps sp's pages to working paths; a path depends only on its own space.
+func (s *session) paths(sp *space) map[string]string {
+	var refs []pageRef
+	for _, r := range s.tree {
+		if r.Space == sp.id {
+			refs = append(refs, r)
+		}
+	}
+	return pagePaths(sp.dir, refs)
 }
 
 func (s *session) name(ctx context.Context, accountID string) string {
@@ -93,7 +198,7 @@ func (s *session) name(ctx context.Context, accountID string) string {
 }
 
 func (s *session) List(ctx context.Context, _ string) (adapter.Listing, error) {
-	if err := s.loadTree(ctx); err != nil {
+	if err := s.loadAll(ctx); err != nil {
 		return adapter.Listing{}, err
 	}
 	ids := make([]string, 0, len(s.tree))
@@ -116,11 +221,6 @@ func (s *session) List(ctx context.Context, _ string) (adapter.Listing, error) {
 }
 
 func (s *session) Fetch(ctx context.Context, id string) (*adapter.Resource, error) {
-	if s.tree == nil {
-		if err := s.loadTree(ctx); err != nil {
-			return nil, err
-		}
-	}
 	var p apiPage
 	if err := s.c.do(ctx, http.MethodGet, "/wiki/api/v2/pages/"+id+"?body-format=storage", nil, &p); err != nil {
 		if errors.Is(err, adapter.ErrNotFound) {
@@ -128,7 +228,15 @@ func (s *session) Fetch(ctx context.Context, id string) (*adapter.Resource, erro
 		}
 		return nil, err
 	}
-	s.tree[p.ID] = pageRef{ID: p.ID, Title: p.Title, Parent: p.ParentID}
+	sp := s.byID[p.SpaceID]
+	if sp == nil {
+		delete(s.tree, id)
+		return nil, fmt.Errorf("%w: page %s is in a space outside this tree", adapter.ErrNotFound, id)
+	}
+	if err := s.load(ctx, sp); err != nil {
+		return nil, err
+	}
+	s.tree[p.ID] = pageRef{ID: p.ID, Title: p.Title, Parent: p.ParentID, Space: sp.id, Version: p.Version.Number}
 	var labels []string
 	err := s.c.paginate(ctx, "/wiki/api/v2/pages/"+id+"/labels?limit=250", func(raw json.RawMessage) error {
 		var l struct{ Name, Prefix string }
@@ -164,7 +272,7 @@ func (s *session) Fetch(ctx context.Context, id string) (*adapter.Resource, erro
 		return nil, err
 	}
 	root.Children = append(root.Children, attachmentNodes(atts, func(a string) string { return s.name(ctx, a) })...)
-	return &adapter.Resource{ID: p.ID, Version: strconv.Itoa(p.Version.Number), Path: s.paths()[p.ID],
+	return &adapter.Resource{ID: p.ID, Version: strconv.Itoa(p.Version.Number), Path: s.paths(sp)[p.ID],
 		By: s.name(ctx, p.Version.AuthorID), At: p.Version.CreatedAt, Root: root}, nil
 }
 
@@ -183,8 +291,8 @@ func (s *session) titleTaken(title, except string) bool {
 }
 
 func (s *session) parentFor(p string, idByPath func(string) (string, bool)) (string, error) {
-	if !strings.HasPrefix(p, s.spaceDir+"/") {
-		return "", fmt.Errorf("pages must live under %s/", s.spaceDir)
+	if _, err := s.spaceFor(p); err != nil {
+		return "", err
 	}
 	parent := parentPath(p)
 	if parent == "" {
@@ -224,10 +332,8 @@ func (s *session) pagePut(req adapter.ApplyRequest, idx []int) (title, parent st
 }
 
 func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter.Result {
-	if s.tree == nil {
-		if err := s.loadTree(ctx); err != nil {
-			return []adapter.Result{{Action: req.Actions[0], Err: err}}
-		}
+	if err := s.loadAll(ctx); err != nil {
+		return []adapter.Result{{Action: req.Actions[0], Err: err}}
 	}
 	var out []adapter.Result
 	for i, a := range req.Actions {
@@ -244,14 +350,14 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 			if _, err := s.parentFor(req.Local.Path, req.IDByPath); err != nil {
 				res.Err = err
 			} else if s.titleTaken(title, "") {
-				res.Err = fmt.Errorf("title %q is already used in space %s", title, s.spaceKey)
+				res.Err = fmt.Errorf("title %q is already used in space %s", title, s.keyOf(req.Local.Path))
 			}
 		case a.Verb == "move" || (a.Verb == "update" && a.Group == "title"):
 			title, _, err := s.pagePut(req, []int{i})
 			if err != nil {
 				res.Err = err
 			} else if s.titleTaken(title, req.Local.ID) {
-				res.Err = fmt.Errorf("title %q is already used in space %s", title, s.spaceKey)
+				res.Err = fmt.Errorf("title %q is already used in space %s", title, s.keyOf(req.Local.Path))
 			}
 		case a.Verb == "update" || a.Verb == "delete":
 		default:
@@ -263,10 +369,8 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 }
 
 func (s *session) Apply(ctx context.Context, req adapter.ApplyRequest) []adapter.Result {
-	if s.tree == nil {
-		if err := s.loadTree(ctx); err != nil {
-			return []adapter.Result{{Action: req.Actions[0], Err: err, Code: codeOf(err)}}
-		}
+	if err := s.loadAll(ctx); err != nil {
+		return []adapter.Result{{Action: req.Actions[0], Err: err, Code: codeOf(err)}}
 	}
 	out := make([]adapter.Result, len(req.Actions))
 	var pageIdx, labelIdx, commentIdx, attIdx []int
@@ -355,7 +459,8 @@ func (s *session) create(ctx context.Context, req adapter.ApplyRequest) []adapte
 	if title == "" {
 		title = baseName(req.Local.Path)
 	}
-	body := map[string]any{"spaceId": s.spaceID, "status": "current", "title": title,
+	sp, _ := s.spaceFor(req.Local.Path)
+	body := map[string]any{"spaceId": sp.id, "status": "current", "title": title,
 		"body": storageBody(storageOf(req.Local.Root.Child("body")))}
 	if parent != "" {
 		body["parentId"] = parent
@@ -364,7 +469,7 @@ func (s *session) create(ctx context.Context, req adapter.ApplyRequest) []adapte
 	if err := s.c.do(ctx, http.MethodPost, "/wiki/api/v2/pages", body, &p); err != nil {
 		return fail(err)
 	}
-	s.tree[p.ID] = pageRef{ID: p.ID, Title: p.Title, Parent: p.ParentID}
+	s.tree[p.ID] = pageRef{ID: p.ID, Title: p.Title, Parent: p.ParentID, Space: sp.id, Version: p.Version.Number}
 	out := []adapter.Result{{Action: act, ID: p.ID, Detail: "id=" + p.ID}}
 	if ls := labelsOf(req.Local.Root); len(ls) > 0 {
 		if err := s.syncLabels(ctx, p.ID, nil, ls); err != nil {
