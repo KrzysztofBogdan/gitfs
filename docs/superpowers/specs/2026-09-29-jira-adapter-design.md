@@ -135,8 +135,8 @@ else's service desk, and let them reply.
 
 * Desks are resolved with `GET /rest/servicedeskapi/servicedesk` (paged). An
   unknown `desk` id fails and names it.
-* `DefaultDir`: the lower-cased project key of the desk when one desk is
-  selected, else the first host label.
+* `DefaultDir`: the first host label (a desk's key is unknown before the
+  API answers).
 
 ### 3.3 Credentials
 
@@ -167,7 +167,8 @@ warsaw-dynamics/
 Customer mode: `<desk project key, lower-cased>/<KEY> <summary>.xml`, plus
 `.people.xml`; no `.workflows.xml`.
 
-* Path model `Flat`: the file name is `<KEY> <summary>.xml`, derived. Editing
+* Path model `Flat`: the file name is `<KEY> <summary>.xml`, derived, cut to
+  200 bytes at a character boundary (file systems allow 255). Editing
   `<summary>` renames the file on commit and pull. A local rename is a no-op
   with a warning.
 * Name sanitising and collision suffixes follow the shared rules (`/`, `\`
@@ -176,8 +177,9 @@ Customer mode: `<desk project key, lower-cased>/<KEY> <summary>.xml`, plus
 * Hierarchy is `<parent>`, never folders.
 * A new file under a folder that is not a selected project (or desk) is
   refused: `no project "new" in this tree; gfs does not create projects`.
-* Moving a file between project folders is refused: `moving issues between
-  projects is not supported`.
+* Moving a file to another project folder does nothing: the path model is
+  flat, so `status` warns `rename ignored: name is derived` (Jira's move needs
+  a field mapping).
 * `.people.xml` and `.workflows.xml` are resources the adapter lists (ids
   `people` and `workflows`, version = SHA-256 of the canonical content). Any
   local change is refused by `Check`.
@@ -246,9 +248,10 @@ plus a fixed set that is always requested (`status`, `resolution`,
 issue by editmeta and transition screens (§7.3).
 
 * createmeta is `GET /rest/api/3/issue/createmeta/{project}/issuetypes/{typeId}`,
-  one request per (project, type), cached in `.gfs/jira/meta.json` with the
-  field catalogue (`GET /rest/api/3/field`). The cache is refreshed when
-  pull meets a (project, type) not in it, and on `pull --full`.
+  one request per (project, type), cached in `.gfs/cache/jira/meta.json`
+  (the engine hands sessions `.gfs/cache` through `adapter.Cacher`). The
+  cache is refreshed when pull meets a (project, type) not in it, and on
+  `pull --full`.
 * Measured: createmeta and a sample issue's editmeta differ by 1–3 fields;
   every field with a value outside this set was computed or noise (Rank,
   Development, `[CHART]` fields, SLA, request type, request language). They
@@ -343,14 +346,15 @@ schema (`gfs schema jira`), as for Confluence.
   `GET /rest/api/3/user/search` (other pickers): exact email first, then a
   unique exact display name. Ambiguous or not found: an error listing the
   candidates with their accountIds.
-* `<assignee/>` unassigns. Editing the text while keeping `account` is
-  refused.
+* Removing `<assignee>` unassigns (canon drops empty elements, so
+  `<assignee/>` is the same as none). Editing the text while keeping
+  `account` is refused.
 * Mentions inside ADF are native: `<mention id="<accountId>" text="@Name"/>`.
 
 ### 5.8 `.people.xml`
 
 ```xml
-<people>
+<people id="people">
   <person account="712020:de26…" type="atlassian" active="true">Adam Lipiński</person>
   <person account="qm:718e…" type="customer" active="true" email="hadas@example.com">hadas@example.com</person>
 </people>
@@ -364,7 +368,7 @@ rebuilds the file.
 ### 5.9 `.workflows.xml`
 
 ```xml
-<workflows>
+<workflows id="workflows">
   <workflow name="Agile Workflow - Story">
     <scheme project="GEN" type="Task"/>
     <scheme project="GEN" type="Bug"/>
@@ -377,12 +381,14 @@ rebuilds the file.
 </workflows>
 ```
 
-* With the Administer Jira permission: built from `GET /rest/api/3/workflows/search`
-  and the workflow schemes of the selected projects. A `transition` without
+* With the Administer Jira permission: built from `GET /rest/api/3/workflow/search`
+  (per workflow, with `expand=transitions,statuses`), `GET /rest/api/3/status`
+  and `GET /rest/api/3/workflowscheme/project` for the selected projects. A `transition` without
   `from` is available from any status.
 * Without it: from `GET /rest/api/3/project/{key}/statuses`, giving
-  `scheme` and `status` elements only, and the file carries the comment
-  `<!-- transitions need the Administer Jira permission; use gfs actions <file> -->`.
+  `scheme` and `status` elements only, and the file starts with
+  `<note>transitions need the Administer Jira permission; run gfs actions with an issue file to see what you can do to it</note>`
+  (an element: canon drops XML comments).
 * Refreshed on clone, `pull --full`, and when pull meets a (project, type)
   not in the file.
 * Informational only. Conditions and validators are user- and
@@ -401,7 +407,7 @@ rebuilds the file.
   <description type="text/x-jira-wiki">…</description>
   <approval id="12" name="Legal" status="pending"/>
   <attachment id="…" name="…" size="…" mime="…" created="…" author="…"/>
-  <comment id="…" account="…" author="Sherica Ocbania" created="…" type="text/x-jira-wiki">…</comment>
+  <comment id="…" account="…" author="Sherica Ocbania" created="…">…</comment>
 </request>
 ```
 
@@ -410,6 +416,9 @@ rebuilds the file.
 * Bodies are the strings the customer API returns (`text/x-jira-wiki`).
   They are read-only: the customer API cannot edit descriptions or
   comments.
+* `<status>` shows the status name; to move the request, write a customer
+  transition name there (customer transitions report no target status), and
+  write-back shows the status the desk chose.
 * Writable: `<status>` (customer transitions), `<participant>` add and
   remove, `<approval decision="approve|decline">` on a pending approval
   (`decision` is the declared user-written attribute of this mode), new
@@ -497,12 +506,10 @@ them like any remote change.
 
 ### 7.1 Lock
 
-Jira's edit endpoint takes no expected version. The lock is `updated`:
-before the first write for a file, `Apply` reads
-`GET /issue/{id}?fields=updated` and returns `adapter.ErrLock` if it differs
-from the base. The engine then merges (or refuses under `--no-merge`).
-`Check` does the same comparison without writing. The race between that
-read and the write is accepted and documented.
+Jira's edit endpoint takes no expected version. The engine already fetches
+the issue just before `Apply` and compares it with the base: if `updated`
+(or any content) moved, it merges, or refuses under `--no-merge`. The race
+between that fetch and the write is accepted and documented.
 
 ### 7.2 Actions and order
 
@@ -572,7 +579,7 @@ is refused: `delete or re-parent its sub-tasks first`.
 | `comment` | `POST /issue/{id}/comment`; in JSM projects `internal="true"` adds the property `sd.public.comment` = `{"internal": true}` | `PUT /issue/{id}/comment/{cid}` | `DELETE …/comment/{cid}` |
 | `worklog` | `POST /issue/{id}/worklog?adjustEstimate=auto` | `PUT …/worklog/{wid}?adjustEstimate=auto` | `DELETE …/worklog/{wid}?adjustEstimate=auto` |
 | `link` | `POST /issueLink`; the phrase selects the link type and direction; an unknown phrase lists the valid ones | refused | `DELETE /issueLink/{lid}` |
-| `attachment` | `POST /issue/{id}/attachments` (multipart, `X-Atlassian-Token: no-check`) | refused: `Jira attachments have no versions; delete and re-add` | `DELETE /attachment/{aid}` |
+| `attachment` | `POST /issue/{id}/attachments` (multipart, `X-Atlassian-Token: no-check`) | never sent: the schema allows create and delete only, so `status` marks an edited file `!` ("update of attachments is not supported") | `DELETE /attachment/{aid}` |
 
 Attachment kind operations are `create delete`; version is `-`.
 
@@ -594,19 +601,26 @@ Attachment kind operations are `create delete`; version is `-`.
 
 ### 7.8 Describe
 
-`status` and `commit --dry-run` print resolved actions:
+`status` prints what each action is; `commit --dry-run` also asks Jira and
+prints what `Check` resolved:
 
 ```text
-M  sup/SUP-4017 License not activating.xml
-     update       priority        Medium -> High
-     transition   In Progress -> Closed (Resolve this issue) with resolution=Done
-     reply        + 1 public comment                                   [ask]
-     worklog      + 2h
-A  gen/Rate limiter drops burst traffic.xml   create Bug in GEN
+$ gfs status
+  M  sup/SUP-4017 License not activating.xml
+        update priority
+        transition to Closed
+        add public reply (emails the customer)  [ask]
+        log 2h
+  A  gen/Rate limiter drops burst traffic.xml create Bug in GEN
+
+$ gfs commit --dry-run
+update  sup/SUP-4017 License not activating.xml   would run  transition In Progress -> Closed (Resolve this issue) with <resolution>
 ```
 
 `Check` resolves people, options, keys, the transition and required fields,
-so `--dry-run` reports those errors without writing.
+so `--dry-run` reports those errors without writing. Its result `Detail`
+(for a transition: `transition In Progress -> Closed (Resolve this issue)
+with <resolution>`) replaces the action's own detail in dry-run output.
 
 ### 7.9 Errors
 
@@ -624,13 +638,18 @@ user can do to that resource now:
 // Advisor is implemented by sessions that can list what the user may do
 // to one resource now.
 type Advisor interface {
-	Available(ctx context.Context, id string, local *Resource) ([]Available, error)
+	Available(ctx context.Context, id string, local *Resource) (Advice, error)
+}
+
+type Advice struct {
+	State string      // shown after the path, e.g. "status: In Progress"
+	Items []Available
+	Note  string      // e.g. what the local <status> resolves to
 }
 
 type Available struct {
 	Verb, Name, To string // "transition", "Resolve this issue", "Closed"
 	Fields         []AvailableField
-	Note           string // e.g. what the local <status> resolves to
 }
 
 type AvailableField struct {
@@ -691,22 +710,23 @@ A separate session type in the same adapter, over
 | new `<attachment>` | `POST /servicedesk/{id}/attachTemporaryFile`, then `POST /request/{key}/attachment` (`public: true`) | `create` |
 | anything else | refused: read-only for customers | |
 
-Lock: the request's `statusDate` and comment count are re-read before the
-first write; a difference returns `adapter.ErrLock`.
+Lock: as in agent mode, the engine's fetch just before `Apply` catches a
+request that changed.
 
 ### 9.3 Available
 
 Customer transitions from `GET /request/{key}/transition`, plus pending
-approvals where the user is an approver, plus the `actions` map from the
-listing (`addComment`, `addAttachment`, `addParticipant`, …) when an action
-is not allowed.
+approvals where the user is an approver.
 
 ## 10. Errors
 
 * Bad URL, unknown `filter` key or `desk` id, invalid `since` or `limit`:
   fail before any issue request, naming the problem.
-* 429 and 503 are retried by `atlassian.Client` (honouring `Retry-After`,
-  capped backoff, at most 5 attempts).
+* Retries by `atlassian.Client`, as Confluence already did: 429 on any
+  method after `Retry-After` (seconds or HTTP date); 502/503/504 and network
+  errors on GET only; backoff from 1s with up to 25% jitter, at most a
+  minute per wait, 6 attempts and 5 minutes of waiting in total. Waits are
+  reported as `adapter.Progress{Phase: "wait"}`.
 * 401: points at `gfs auth set <email> --host <site>`.
 * A search Jira rejects (JQL syntax change): the error suggests
   `gfs pull --full`.
