@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 )
 
 type Page struct {
@@ -20,8 +23,8 @@ type Page struct {
 }
 
 type Comment struct {
-	ID, PageID, Storage, AuthorID, CreatedAt string
-	Version                                  int
+	ID, PageID, Storage, AuthorID, CreatedAt, UpdatedAt string
+	Version                                             int
 }
 
 type Attachment struct {
@@ -30,27 +33,33 @@ type Attachment struct {
 	Version                                           int
 }
 
+type Space struct {
+	Key, ID string
+	Type    string // "global" (default) or "personal"
+	Status  string // "current" (default) or "archived"
+}
+
 type Server struct {
 	*httptest.Server
 	PageLimit int
 	Requests  []string
 	Fail      map[string]int    // "METHOD /path" -> status returned instead of handling the request
 	Accounts  map[string]string // email -> token for GET /wiki/rest/api/user/current; nil accepts any credentials
+	Clock     func() time.Time  // time for Stamp and search windows; nil is time.Now
 
 	mu          sync.Mutex
-	spaces      map[string]string // key -> id
+	spaces      map[string]*Space // by key
 	pages       map[string]*Page
 	comments    map[string]*Comment
 	attachments map[string]*Attachment
 	users       map[string]string
 	seq         int
-	now         string
 }
 
 func New() *Server {
-	s := &Server{PageLimit: 250, spaces: map[string]string{}, pages: map[string]*Page{},
+	s := &Server{PageLimit: 250, spaces: map[string]*Space{}, pages: map[string]*Page{},
 		comments: map[string]*Comment{}, attachments: map[string]*Attachment{}, users: map[string]string{"me": "Me", "bob": "bob"},
-		seq: 1000, now: "2026-09-23T12:00:00.000Z"}
+		seq: 1000}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /wiki/api/v2/spaces", s.getSpaces)
 	mux.HandleFunc("GET /wiki/api/v2/spaces/{id}/pages", s.listPages)
@@ -65,6 +74,7 @@ func New() *Server {
 	mux.HandleFunc("DELETE /wiki/api/v2/footer-comments/{id}", s.deleteComment)
 	mux.HandleFunc("POST /wiki/rest/api/content/{id}/label", s.addLabel)
 	mux.HandleFunc("DELETE /wiki/rest/api/content/{id}/label", s.removeLabel)
+	mux.HandleFunc("GET /wiki/rest/api/content/search", s.search)
 	mux.HandleFunc("GET /wiki/rest/api/user", s.getUser)
 	mux.HandleFunc("GET /wiki/rest/api/user/current", s.currentUser)
 	mux.HandleFunc("GET /wiki/api/v2/pages/{id}/attachments", s.listAttachments)
@@ -95,7 +105,48 @@ func (s *Server) next() string { s.seq++; return strconv.Itoa(s.seq) }
 
 // ---- test helpers (lock-free callers: tests call them between requests) ----
 
-func (s *Server) AddSpace(key, id string) { s.mu.Lock(); s.spaces[key] = id; s.mu.Unlock() }
+const stampLayout = "2006-01-02T15:04:05.000Z"
+
+func (s *Server) clock() time.Time {
+	if s.Clock != nil {
+		return s.Clock()
+	}
+	return time.Now()
+}
+
+// Stamp is the server's time in Confluence's format. Give content added after a
+// clone this CreatedAt so the change searches find it.
+func (s *Server) Stamp() string { return s.clock().UTC().Format(stampLayout) }
+
+func (s *Server) AddSpace(key, id string) { s.PutSpace(Space{Key: key, ID: id}) }
+
+func (s *Server) PutSpace(sp Space) {
+	if sp.Type == "" {
+		sp.Type = "global"
+	}
+	if sp.Status == "" {
+		sp.Status = "current"
+	}
+	s.mu.Lock()
+	s.spaces[sp.Key] = &sp
+	s.mu.Unlock()
+}
+
+// SetLabels replaces a page's labels without a new page version, as Confluence does.
+func (s *Server) SetLabels(pageID string, labels ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pages[pageID].Labels = labels
+}
+
+// TakeRequests returns the requests served since the last call and forgets them.
+func (s *Server) TakeRequests() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.Requests
+	s.Requests = nil
+	return r
+}
 
 func (s *Server) AddPage(p Page) *Page {
 	s.mu.Lock()
@@ -145,7 +196,7 @@ func (s *Server) EditPage(id string, f func(*Page)) {
 	f(p)
 	p.Version++
 	p.AuthorID = "bob"
-	p.UpdatedAt = s.now
+	p.UpdatedAt = s.Stamp()
 }
 
 func (s *Server) Page(id string) (*Page, bool) {
@@ -212,6 +263,15 @@ func (c *Comment) json() map[string]any {
 
 // paged writes one page of items; the cursor is a plain offset.
 func (s *Server) paged(w http.ResponseWriter, r *http.Request, items []any) {
+	s.writePage(w, r, items, r.URL.Path)
+}
+
+// pagedV1 links the next page as REST v1 does: relative to /wiki.
+func (s *Server) pagedV1(w http.ResponseWriter, r *http.Request, items []any) {
+	s.writePage(w, r, items, strings.TrimPrefix(r.URL.Path, "/wiki"))
+}
+
+func (s *Server) writePage(w http.ResponseWriter, r *http.Request, items []any, link string) {
 	limit := s.PageLimit
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l < limit {
 		limit = l
@@ -222,7 +282,7 @@ func (s *Server) paged(w http.ResponseWriter, r *http.Request, items []any) {
 	if end < len(items) {
 		q := r.URL.Query()
 		q.Set("cursor", strconv.Itoa(end))
-		resp["_links"] = map[string]any{"next": r.URL.Path + "?" + q.Encode()}
+		resp["_links"] = map[string]any{"next": link + "?" + q.Encode()}
 	}
 	writeJSON(w, 200, resp)
 }
@@ -251,19 +311,82 @@ func (s *Server) titleTaken(spaceID, title, except string) bool {
 
 // ---- handlers ----
 
+// getSpaces: keys is a comma list; without status, every status is returned.
 func (s *Server) getSpaces(w http.ResponseWriter, r *http.Request) {
-	key := r.URL.Query().Get("keys")
-	var out []any
-	if id, ok := s.spaces[key]; ok {
+	q := r.URL.Query()
+	var keys map[string]bool
+	if k := q.Get("keys"); k != "" {
+		keys = map[string]bool{}
+		for _, key := range strings.Split(k, ",") {
+			keys[key] = true
+		}
+	}
+	var sps []*Space
+	for _, sp := range s.spaces {
+		if (keys == nil || keys[sp.Key]) && (q.Get("type") == "" || sp.Type == q.Get("type")) &&
+			(q.Get("status") == "" || sp.Status == q.Get("status")) {
+			sps = append(sps, sp)
+		}
+	}
+	sort.Slice(sps, func(i, j int) bool { return sps[i].Key < sps[j].Key })
+	var items []any
+	for _, sp := range sps {
 		home := ""
 		for _, p := range s.pages {
-			if p.SpaceID == id && p.ParentID == "" && (home == "" || p.ID < home) {
+			if p.SpaceID == sp.ID && p.ParentID == "" && (home == "" || p.ID < home) {
 				home = p.ID
 			}
 		}
-		out = append(out, map[string]any{"id": id, "key": key, "homepageId": home})
+		items = append(items, map[string]any{"id": sp.ID, "key": sp.Key, "type": sp.Type, "status": sp.Status, "homepageId": home})
 	}
-	writeJSON(w, 200, map[string]any{"results": out})
+	s.paged(w, r, items)
+}
+
+var cqlRe = regexp.MustCompile(`^type = (comment|attachment) AND lastmodified >= now\("-(\d+)m"\)(?: AND space in \(([^)]*)\))?$`)
+
+// search serves the two CQL shapes gfs sends (site clone spec §5.3).
+func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	m := cqlRe.FindStringSubmatch(q.Get("cql"))
+	if m == nil || q.Get("expand") != "container" {
+		fail(w, 400, "unsupported search: "+q.Get("cql"))
+		return
+	}
+	mins, _ := strconv.Atoi(m[2])
+	since := s.clock().Add(-time.Duration(mins) * time.Minute).UTC().Format(stampLayout)
+	inScope := func(string) bool { return true }
+	if m[3] != "" {
+		ids := map[string]bool{}
+		for _, k := range strings.Split(m[3], ",") {
+			if sp, ok := s.spaces[strings.Trim(strings.TrimSpace(k), `"`)]; ok {
+				ids[sp.ID] = true
+			}
+		}
+		inScope = func(pageID string) bool { p, ok := s.pages[pageID]; return ok && ids[p.SpaceID] }
+	}
+	type hit struct{ id, page, at string }
+	var hits []hit
+	if m[1] == "comment" {
+		for _, c := range s.comments {
+			at := c.UpdatedAt
+			if at == "" {
+				at = c.CreatedAt
+			}
+			hits = append(hits, hit{c.ID, c.PageID, at})
+		}
+	} else {
+		for _, a := range s.attachments {
+			hits = append(hits, hit{a.ID, a.PageID, a.CreatedAt})
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].id < hits[j].id })
+	var items []any
+	for _, h := range hits {
+		if h.at >= since && inScope(h.page) {
+			items = append(items, map[string]any{"id": h.id, "type": m[1], "container": map[string]any{"id": h.page, "type": "page"}})
+		}
+	}
+	s.pagedV1(w, r, items)
 }
 
 func (s *Server) sortedPages(spaceID string) []*Page {
@@ -311,7 +434,7 @@ func (s *Server) createPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p := &Page{ID: s.next(), Title: in.Title, ParentID: in.ParentID, SpaceID: in.SpaceID, Storage: in.Body.Value,
-		AuthorID: "me", CreatedAt: s.now, UpdatedAt: s.now, Version: 1}
+		AuthorID: "me", CreatedAt: s.Stamp(), UpdatedAt: s.Stamp(), Version: 1}
 	s.pages[p.ID] = p
 	writeJSON(w, 200, p.json(true))
 }
@@ -344,7 +467,7 @@ func (s *Server) updatePage(w http.ResponseWriter, r *http.Request) {
 	}
 	p.Title, p.Storage = in.Title, in.Body.Value
 	p.Version++
-	p.AuthorID, p.UpdatedAt = "me", s.now
+	p.AuthorID, p.UpdatedAt = "me", s.Stamp()
 	writeJSON(w, 200, p.json(true))
 }
 
@@ -395,7 +518,7 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "page not found")
 		return
 	}
-	c := &Comment{ID: s.next(), PageID: in.PageID, Storage: in.Body.Value, AuthorID: "me", CreatedAt: s.now, Version: 1}
+	c := &Comment{ID: s.next(), PageID: in.PageID, Storage: in.Body.Value, AuthorID: "me", CreatedAt: s.Stamp(), Version: 1}
 	s.comments[c.ID] = c
 	writeJSON(w, 200, c.json())
 }
@@ -418,7 +541,7 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "version conflict")
 		return
 	}
-	c.Storage, c.Version = in.Body.Value, c.Version+1
+	c.Storage, c.Version, c.UpdatedAt = in.Body.Value, c.Version+1, s.Stamp()
 	writeJSON(w, 200, c.json())
 }
 
@@ -517,7 +640,7 @@ func (s *Server) EditAttachment(id string, data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a := s.attachments[id]
-	a.Data, a.Version, a.AuthorID, a.CreatedAt = data, a.Version+1, "bob", s.now
+	a.Data, a.Version, a.AuthorID, a.CreatedAt = data, a.Version+1, "bob", s.Stamp()
 }
 
 func (s *Server) Attachment(id string) (*Attachment, bool) {
@@ -655,7 +778,7 @@ func (s *Server) createAttachment(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a := &Attachment{ID: "att" + s.next(), PageID: pageID, Title: name, MediaType: mediaType, Data: data,
-		Version: 1, AuthorID: "me", CreatedAt: s.now}
+		Version: 1, AuthorID: "me", CreatedAt: s.Stamp()}
 	s.attachments[a.ID] = a
 	writeJSON(w, 200, map[string]any{"results": []any{a.v1json()}})
 }
@@ -670,6 +793,6 @@ func (s *Server) updateAttachment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	a.Data, a.MediaType, a.Version, a.AuthorID, a.CreatedAt = data, mediaType, a.Version+1, "me", s.now
+	a.Data, a.MediaType, a.Version, a.AuthorID, a.CreatedAt = data, mediaType, a.Version+1, "me", s.Stamp()
 	writeJSON(w, 200, a.v1json())
 }
