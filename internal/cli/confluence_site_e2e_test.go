@@ -238,3 +238,17 @@ func TestConfluenceConflictedPullKeepsCursor(t *testing.T) {
 		t.Fatalf("comment lost after resolve:\n%s", b)
 	}
 }
+
+// Not a terminal: no bar, and --quiet is accepted by clone and pull.
+func TestProgressOffWithoutTerminal(t *testing.T) {
+	srv := siteServer(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	out := mustRun(t, 0, "clone", "--quiet", "confluence://acme.atlassian.net?base="+srv.URL, "wt")
+	t.Chdir(filepath.Join(dir, "wt"))
+	out += mustRun(t, 0, "pull", "-q")
+	out += mustRun(t, 0, "pull", "--full")
+	if strings.ContainsAny(out, "\r\x1b") {
+		t.Fatalf("progress drawn without a terminal: %q", out)
+	}
+}

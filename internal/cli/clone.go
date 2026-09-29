@@ -10,7 +10,8 @@ import (
 )
 
 func newClone() *cobra.Command {
-	return &cobra.Command{
+	var quiet bool
+	cmd := &cobra.Command{
 		Use:   "clone <url> [<dir>]",
 		Short: "Create a working tree from a remote",
 		Args:  cobra.RangeArgs(1, 2),
@@ -37,8 +38,11 @@ func newClone() *cobra.Command {
 				return err
 			}
 			defer sess.Close()
-			_, err = engine.Clone(cmd.Context(), ad, sess, raw, dir, cmd.OutOrStdout(), nil)
+			progress, out := progressBar(cmd, quiet).attach(sess, cmd.OutOrStdout())
+			_, err = engine.Clone(cmd.Context(), ad, sess, raw, dir, out, progress)
 			return err
 		},
 	}
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "no progress bar")
+	return cmd
 }

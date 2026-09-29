@@ -30,13 +30,17 @@ gfs pull                         # bring in remote changes
 
 ## Commands
 
+`clone` and `pull` show a progress bar on stderr when it is a terminal
+(listing, then pages downloaded with rate and ETA); piped or redirected
+output gets none.
+
 Every command except `clone` and `auth` finds the working tree by walking up
 from the current directory to the nearest `.gfs/`. Paths are relative to the
 current directory; no path means the whole tree.
 
 | command | what it does |
 |---------|--------------|
-| `gfs clone <url> [<dir>]` | Create a working tree from a remote. Records the account it used as `[remote] email`. |
+| `gfs clone <url> [<dir>]` | Create a working tree from a remote. Records the account it used as `[remote] email`. `-q` hides the progress bar. |
 | `gfs status [<path>...]` | Changed files and the remote action each one resolves to. |
 | `gfs diff [<path>...]` | Same header as `status`, then a unified diff of canonical XML against base. |
 | `gfs commit [<path>...]` | Execute the resolved actions on the remote. |
@@ -66,6 +70,7 @@ Built-in docs: `gfs help start` (this page), `gfs help confluence`,
 |------|---------|
 | `--force` | Replace conflicted files with the remote version, discarding local edits. |
 | `--full` | Download every page instead of only what changed. Picks up label-only changes and deleted comments or attachments. |
+| `-q`, `--quiet` | No progress bar. |
 
 ## Status letters
 
