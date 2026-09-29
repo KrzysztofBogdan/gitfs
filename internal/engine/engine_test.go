@@ -26,7 +26,7 @@ line4
 line5</body></note>`)
 	sess, _ := ad.Open(ctx, nil, nil)
 	var out bytes.Buffer
-	env, err := Clone(ctx, ad, sess, "fake://x", filepath.Join(t.TempDir(), "wt"), &out)
+	env, err := Clone(ctx, ad, sess, "fake://x", filepath.Join(t.TempDir(), "wt"), &out, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

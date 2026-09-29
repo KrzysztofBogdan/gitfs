@@ -54,6 +54,8 @@ type Remote struct {
 	Published    []string         // "path channel"
 	Downloads    int              // successful Download calls
 	Cursors      []string         // cursor passed to each List call
+	Stubs        bool             // List returns stubs (no Root); the engine fetches them
+	Missing      map[string]bool  // listed, but Fetch reports not found (deleted after listing)
 	recs         map[string]*record
 	seq          int
 }
@@ -88,6 +90,10 @@ func (r *Remote) Edit(id string, f func(root *xmltree.Node)) {
 	rec.version++
 	rec.by = "bob"
 }
+
+// EditSilently changes a resource without a new version, as services do for
+// sub-resources that do not version the parent.
+func (r *Remote) EditSilently(id string, f func(root *xmltree.Node)) { f(r.recs[id].root) }
 
 func (r *Remote) Delete(id string)     { delete(r.recs, id) }
 func (r *Remote) Move(id, path string) { r.recs[id].path = path; r.recs[id].version++ }
@@ -228,14 +234,18 @@ func (s session) List(_ context.Context, cursor string) (adapter.Listing, error)
 	s.r.Cursors = append(s.r.Cursors, cursor)
 	l := adapter.Listing{Full: true, Cursor: "c1"}
 	for id, rec := range s.r.recs {
-		l.Resources = append(l.Resources, *s.r.resource(id, rec))
+		res := *s.r.resource(id, rec)
+		if s.r.Stubs {
+			res.Root = nil
+		}
+		l.Resources = append(l.Resources, res)
 	}
 	return l, nil
 }
 
 func (s session) Fetch(_ context.Context, id string) (*adapter.Resource, error) {
 	res, ok := s.r.Get(id)
-	if !ok {
+	if !ok || s.r.Missing[id] {
 		return nil, adapter.ErrNotFound
 	}
 	return res, nil

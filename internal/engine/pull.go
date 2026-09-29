@@ -2,10 +2,12 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"sort"
 
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/attach"
 	"github.com/KrzysztofBogdan/gitfs/internal/changes"
 	"github.com/KrzysztofBogdan/gitfs/internal/envelope"
@@ -51,10 +53,19 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 	if o.Full {
 		cursor = "" // label-only changes, deleted comments and attachments show up only this way
 	}
+	e.report(adapter.Progress{Phase: "list"})
 	l, err := e.Session.List(ctx, cursor)
 	if err != nil {
+		e.report(adapter.Progress{Phase: "done"})
 		return r, err
 	}
+	fetching := true
+	defer func() {
+		if fetching {
+			e.report(adapter.Progress{Phase: "done"})
+		}
+	}()
+	vanished := map[string]bool{} // listed, then not found: deleted on the remote meanwhile
 	printed := false
 	say := func(format string, a ...any) {
 		printed = true
@@ -65,7 +76,8 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 	// listing flags it again. A path-limited pull skips pages it never looks at.
 	keepCursor := o.Filter != nil
 	listed := map[string]bool{}
-	for _, item := range l.Resources {
+	for i, item := range l.Resources {
+		e.report(adapter.Progress{Phase: "fetch", Done: i, Total: len(l.Resources), Item: item.Path})
 		listed[item.ID] = true
 		entry, known := e.Index.ByID(item.ID)
 		if o.Filter != nil && !o.Filter(item.Path) && !(known && o.Filter(entry.Path)) {
@@ -77,6 +89,9 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 				continue
 			}
 			res, err := e.Resolved(ctx, item)
+			if errors.Is(err, adapter.ErrNotFound) {
+				continue
+			}
 			if err != nil {
 				return r, err
 			}
@@ -87,10 +102,14 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 			say("  +  %s", res.Path)
 			continue
 		}
-		if item.Root == nil && item.Version == entry.Version && item.Path == entry.Path {
+		if item.Root == nil && item.Version == entry.Version && item.Path == entry.Path && !o.Full {
 			continue
 		}
 		res, err := e.Resolved(ctx, item)
+		if errors.Is(err, adapter.ErrNotFound) {
+			vanished[item.ID] = true
+			continue
+		}
 		if err != nil {
 			return r, err
 		}
@@ -189,7 +208,9 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 			}
 		}
 	}
-	gone := map[string]bool{}
+	fetching = false
+	e.report(adapter.Progress{Phase: "done"})
+	gone := vanished
 	for _, id := range l.Deleted {
 		gone[id] = true
 	}

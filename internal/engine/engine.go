@@ -21,6 +21,14 @@ type Env struct {
 	Out     io.Writer
 	Prompt  func(string) bool // nil: not a TTY
 	Now     func() time.Time
+	// Progress, when set, hears the steps of clone and pull, for display.
+	Progress func(adapter.Progress)
+}
+
+func (e *Env) report(p adapter.Progress) {
+	if e.Progress != nil {
+		e.Progress(p)
+	}
 }
 
 func (e *Env) Canonical(root *xmltree.Node) []byte {

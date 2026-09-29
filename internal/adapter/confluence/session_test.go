@@ -49,7 +49,14 @@ func TestListAndFetch(t *testing.T) {
 	if !ok || arch.ID != "98120" || arch.Version != "1" {
 		t.Fatalf("%v", m)
 	}
-	got := xmltree.Print(arch.Root, 0)
+	if arch.Root != nil {
+		t.Fatal("List returns stubs")
+	}
+	fetched, err := sess.Fetch(bg, arch.ID)
+	if err != nil || fetched.Path != arch.Path {
+		t.Fatalf("%+v %v", fetched, err)
+	}
+	got := xmltree.Print(fetched.Root, 0)
 	for _, want := range []string{`parent="98001"`, "<title>Architecture</title>", `<comment id="7731" author="bob"`, "<p>Out of date.</p>"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in\n%s", want, got)

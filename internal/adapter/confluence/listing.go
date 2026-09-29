@@ -19,12 +19,13 @@ import (
 // search indexing delay (site clone spec §5.3).
 const searchOverlap = 10
 
-// List reports every page of the selected spaces. With a cursor from an
-// earlier List, pages come as stubs (no body) unless a comment or attachment
-// on them changed since; pull fetches the stubs whose version or path moved
-// (site clone spec §5).
+// List reports every page of the selected spaces as a stub (no body), except
+// pages whose comments or attachments changed since the cursor's listing,
+// which come in full. The engine downloads the stubs it needs, and reports
+// that progress for every adapter (site clone spec §5).
 func (s *session) List(ctx context.Context, cursor string) (adapter.Listing, error) {
 	start := s.now()
+	defer s.report(adapter.Progress{Phase: "done"})
 	if err := s.loadAll(ctx); err != nil {
 		return adapter.Listing{}, err
 	}
@@ -42,16 +43,19 @@ func (s *session) List(ctx context.Context, cursor string) (adapter.Listing, err
 	}
 	sort.Slice(ids, func(i, j int) bool { return idLess(ids[i], ids[j]) })
 	pathsBySpace := map[string]map[string]string{}
+	pathOf := func(ref pageRef) string {
+		ps, ok := pathsBySpace[ref.Space]
+		if !ok {
+			ps = s.paths(s.byID[ref.Space])
+			pathsBySpace[ref.Space] = ps
+		}
+		return ps[ref.ID]
+	}
 	l := adapter.Listing{Full: true, Cursor: start.UTC().Format(time.RFC3339)}
 	for _, id := range ids {
 		ref := s.tree[id]
-		if incremental && !dirty[id] {
-			ps, ok := pathsBySpace[ref.Space]
-			if !ok {
-				ps = s.paths(s.byID[ref.Space])
-				pathsBySpace[ref.Space] = ps
-			}
-			l.Resources = append(l.Resources, adapter.Resource{ID: id, Version: strconv.Itoa(ref.Version), Path: ps[id]})
+		if !dirty[id] {
+			l.Resources = append(l.Resources, adapter.Resource{ID: id, Version: strconv.Itoa(ref.Version), Path: pathOf(ref)})
 			continue
 		}
 		r, err := s.Fetch(ctx, id)

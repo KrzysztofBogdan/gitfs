@@ -21,7 +21,7 @@ func attached(t *testing.T) (*Env, *fake.Adapter, *bytes.Buffer) {
 	ad.Remote.PutAttachment("2", "20", "report.pdf", []byte("pdf"))
 	sess, _ := ad.Open(ctx, nil, nil)
 	var out bytes.Buffer
-	env, err := Clone(ctx, ad, sess, "fake://x", filepath.Join(t.TempDir(), "wt"), &out)
+	env, err := Clone(ctx, ad, sess, "fake://x", filepath.Join(t.TempDir(), "wt"), &out, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

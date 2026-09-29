@@ -86,8 +86,8 @@ func TestListSite(t *testing.T) {
 	}
 	var paths []string
 	for _, r := range l.Resources {
-		if r.Root == nil {
-			t.Fatalf("empty cursor must fetch every page: %s", r.Path)
+		if r.Root != nil {
+			t.Fatalf("a full listing is stubs; the engine downloads them: %s", r.Path)
 		}
 		paths = append(paths, r.Path)
 	}

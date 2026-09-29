@@ -31,11 +31,12 @@ type session struct {
 	tree   map[string]pageRef // pages of the loaded spaces
 	names  map[string]string
 	now    func() time.Time
+	report func(adapter.Progress) // never nil
 }
 
 func openSession(ctx context.Context, t target) (*session, error) {
 	s := &session{c: newClient(t), sel: t.sel, spaces: map[string]*space{}, byID: map[string]*space{},
-		tree: map[string]pageRef{}, names: map[string]string{}, now: time.Now}
+		tree: map[string]pageRef{}, names: map[string]string{}, now: time.Now, report: func(adapter.Progress) {}}
 	if err := s.resolveSpaces(ctx); err != nil {
 		return nil, err
 	}
@@ -149,6 +150,9 @@ func (s *session) prepare(ctx context.Context, req adapter.ApplyRequest) error {
 
 func (s *session) Close() error { return nil }
 
+// SetProgress reports List's progress to f (adapter.Reporter).
+func (s *session) SetProgress(f func(adapter.Progress)) { s.report = f }
+
 // Identity is the account this session acts as (adapter.Identified).
 func (s *session) Identity() string { return s.c.t.email }
 
@@ -182,12 +186,30 @@ func (s *session) load(ctx context.Context, sp *space) error {
 }
 
 func (s *session) loadAll(ctx context.Context) error {
-	for _, sp := range s.sortedSpaces() {
+	sps := s.sortedSpaces()
+	for i, sp := range sps {
+		fresh := !sp.loaded
 		if err := s.load(ctx, sp); err != nil {
 			return err
 		}
+		if fresh {
+			n := 0
+			for _, r := range s.tree {
+				if r.Space == sp.id {
+					n++
+				}
+			}
+			s.report(adapter.Progress{Phase: "pages", Done: i + 1, Total: len(sps), Item: fmt.Sprintf("%s (%s)", sp.key, plural(n, "page"))})
+		}
 	}
 	return nil
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
 }
 
 // paths maps sp's pages to working paths; a path depends only on its own space.

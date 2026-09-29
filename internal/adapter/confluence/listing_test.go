@@ -46,7 +46,7 @@ func TestListCursorAndStubs(t *testing.T) {
 	srv, sess := engSpace(t)
 	advance := clocked(srv, sess)
 	l0, err := sess.List(bg, "")
-	if err != nil || l0.Cursor != "2026-09-29T12:00:00Z" || len(full(l0)) != 3 {
+	if err != nil || l0.Cursor != "2026-09-29T12:00:00Z" || len(l0.Resources) != 3 || len(full(l0)) != 0 {
 		t.Fatalf("%+v %v", l0, err)
 	}
 	advance(5 * time.Minute)
@@ -114,11 +114,18 @@ func TestListWholeSiteSearch(t *testing.T) {
 	}
 }
 
+// An unreadable cursor is a full listing: every page, no change search.
 func TestListUnreadableCursorListsEverything(t *testing.T) {
-	_, sess := engSpace(t)
+	srv, sess := engSpace(t)
+	srv.TakeRequests()
 	l, err := sess.List(bg, "garbage")
-	if err != nil || len(full(l)) != 3 {
-		t.Fatalf("%v %v", full(l), err)
+	if err != nil || len(l.Resources) != 3 {
+		t.Fatalf("%+v %v", l, err)
+	}
+	for _, r := range srv.TakeRequests() {
+		if strings.Contains(r, "/content/search") {
+			t.Fatalf("searched with an unreadable cursor: %s", r)
+		}
 	}
 }
 

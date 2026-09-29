@@ -21,7 +21,7 @@ func TestClonePinsIdentity(t *testing.T) {
 	ad.Remote.Put("1", "a/one.xml", `<note><title>One</title></note>`)
 	sess, _ := ad.Open(ctx, nil, nil)
 	var out bytes.Buffer
-	env, err := Clone(ctx, ad, identified{Session: sess, id: "me@x.com"}, "fake://x", filepath.Join(t.TempDir(), "wt"), &out)
+	env, err := Clone(ctx, ad, identified{Session: sess, id: "me@x.com"}, "fake://x", filepath.Join(t.TempDir(), "wt"), &out, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

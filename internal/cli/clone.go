@@ -37,7 +37,7 @@ func newClone() *cobra.Command {
 				return err
 			}
 			defer sess.Close()
-			_, err = engine.Clone(cmd.Context(), ad, sess, raw, dir, cmd.OutOrStdout())
+			_, err = engine.Clone(cmd.Context(), ad, sess, raw, dir, cmd.OutOrStdout(), nil)
 			return err
 		},
 	}
