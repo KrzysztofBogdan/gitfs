@@ -18,8 +18,8 @@ INSTALL_DIR=/some/dir ./install.sh
 
 ```shell
 gfs auth set me@example.com --host acme.atlassian.net   # once per account
-gfs clone confluence://acme.atlassian.net/ENG eng
-cd eng
+gfs clone confluence://acme.atlassian.net          # every space; or .../ENG for one
+cd acme
 vim "eng/Home/Architecture.xml"
 gfs status                       # what will happen on the remote
 gfs diff                         # canonical diff against the last synced state
@@ -65,6 +65,7 @@ Built-in docs: `gfs help start` (this page), `gfs help confluence`,
 | flag | meaning |
 |------|---------|
 | `--force` | Replace conflicted files with the remote version, discarding local edits. |
+| `--full` | Download every page instead of only what changed. Picks up label-only changes and deleted comments or attachments. |
 
 ## Status letters
 

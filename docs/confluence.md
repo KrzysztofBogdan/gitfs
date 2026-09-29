@@ -1,23 +1,46 @@
 # gfs and Confluence Cloud
 
-One working tree mirrors one Confluence space. Every page is one XML file;
-the page tree is the folder tree. General `gfs` usage: [start.md](../start.md).
+One working tree mirrors a Confluence site: every selected space is a folder,
+every page is one XML file, the page tree is the folder tree. General `gfs`
+usage: [start.md](../start.md).
 
 ## Remote URL
 
 ```text
+confluence://[<email>@]<site>.atlassian.net[?filter=K1,K2&type=global|personal|all&exclude=K1,K2]
 confluence://[<email>@]<site>.atlassian.net/<SPACEKEY>
+confluence:https://<site>.atlassian.net/wiki/spaces/<SPACEKEY>/…
 ```
 
-* `<SPACEKEY>` is the key from the space URL:
-  `https://warsaw-dynamics.atlassian.net/wiki/spaces/HF` → `HF`.
+| parameter | meaning | default |
+|-----------|---------|---------|
+| `filter=K1,K2` | exactly these spaces, any type, archived included | all spaces |
+| `type=global\|personal\|all` | which spaces, when there is no `filter` | `global` |
+| `exclude=K1,K2` | leave these out | none |
+
+* No `filter`: every current space of that type the account can see.
+  Archived spaces are skipped.
+* `confluence://<site>/HF` is short for `?filter=HF`. The key is the one in
+  the space URL: `https://warsaw-dynamics.atlassian.net/wiki/spaces/HF` → `HF`.
+* The third form is a URL copied from the browser, prefixed with
+  `confluence:`. Any page of the space works; it always means the whole
+  space.
+* `type` and `filter` cannot be combined.
 * The email is optional and URL-encoded (`@` becomes `%40`):
   `confluence://me%40example.com@acme.atlassian.net/ENG`.
 * `?base=<url>` overrides the API base URL (tests only).
 
 ```shell
-gfs clone confluence://acme.atlassian.net/ENG eng     # default dir: confluence
+gfs clone confluence://acme.atlassian.net                       # every global space, into acme/
+gfs clone confluence://acme.atlassian.net/ENG                   # one space, into eng/
+gfs clone "confluence:https://acme.atlassian.net/wiki/spaces/ENG/overview"
+gfs clone "confluence://acme.atlassian.net?type=all&exclude=ARCHIVE"
 ```
+
+`clone` records the URL in its canonical form (`confluence://<site>?filter=ENG`)
+as `[remote] url` in `.gfs/config`. To change which spaces the tree holds,
+edit that line; the next `pull` adds the spaces now selected and removes the
+files of spaces no longer selected.
 
 ## Credentials
 
@@ -43,16 +66,22 @@ stays on one account even when you have several.
 ## Layout
 
 ```text
-eng/                            space key, lower-cased
-├── Home.xml                    a page
-├── Home.files/                 its attachments (downloaded with gfs get)
-│   └── logo.svg
-└── Home/                       its child pages
-    ├── Architecture.xml
-    ├── Runbooks.xml
-    └── Runbooks/
-        └── Rollback.xml
+acme/                           the working tree
+├── eng/                        space ENG, key lower-cased
+│   ├── Home.xml                a page
+│   ├── Home.files/             its attachments (downloaded with gfs get)
+│   │   └── logo.svg
+│   └── Home/                   its child pages
+│       ├── Architecture.xml
+│       ├── Runbooks.xml
+│       └── Runbooks/
+│           └── Rollback.xml
+└── ~jan/                       personal space ~jan
+    └── Jan's Home.xml
 ```
+
+* The first folder is the space. A new top-level folder does not create a
+  space; commit refuses it.
 
 * `Title.xml` is a page; `Title/` holds its children; `Title.files/` holds its
   attachments.
@@ -196,6 +225,20 @@ already exist on Confluence (commit it first). Without `<title>` the file name
 becomes the title. After commit the file is written back under the name
 derived from the title.
 
+## Pull
+
+`pull` lists every page's version (one request per 250 pages) and searches
+for comments and attachments changed since the last pull. It downloads only
+pages whose version changed or that those searches name, so a pull with
+nothing new downloads no pages.
+
+Not seen by that search: label-only changes, and deleted comments or
+attachments. They arrive the next time the page is edited, or with
+
+```shell
+gfs pull --full      # download every page
+```
+
 ## Attachments
 
 `clone` and `pull` list attachments in each page but never download bytes.
@@ -237,6 +280,8 @@ gfs commit
 * Inline comments as editable elements (their markers in the body survive).
 * Page restrictions, watchers, blog posts, whiteboards, databases.
 * Moving a page to the space root.
+* Creating a space (a new top-level folder).
+* Moving a page between spaces.
 * Renaming an attachment.
 * Wide or full-width code blocks and expands, and a table's numbered first
   column: Confluence drops these settings when they come through storage
