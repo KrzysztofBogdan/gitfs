@@ -252,3 +252,16 @@ func TestCommitDeletesChildrenBeforeParent(t *testing.T) {
 		t.Fatalf("deletes must run deepest first:\n%s", got)
 	}
 }
+
+// A dry run shows what Check resolved an action to, when Check says.
+func TestDryRunShowsCheckDetail(t *testing.T) {
+	env, ad, out := cloned(t)
+	ad.Remote.CheckDetail = map[string]string{"update title": "rename to One v2 (resolved remotely)"}
+	t.Cleanup(func() { ad.Remote.CheckDetail = nil })
+	edit(t, env, "a/one.xml", "<title>One</title>", "<title>One v2</title>")
+	out.Reset()
+	commit(t, env, CommitOpts{DryRun: true})
+	if !strings.Contains(out.String(), "would run  rename to One v2 (resolved remotely)") {
+		t.Fatal(out.String())
+	}
+}

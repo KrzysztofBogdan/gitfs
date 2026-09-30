@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence" // registers confluence://
+	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/jira"       // registers jira://
 )
 
 // ExitError carries a non-zero exit code out of a command.

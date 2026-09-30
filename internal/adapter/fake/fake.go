@@ -58,8 +58,9 @@ type Remote struct {
 	FullDirs     []string         // returned as Listing.FullDirs
 	CacheDir     string           // last UseCache argument
 	Advice       map[string]adapter.Advice
-	Stubs        bool            // List returns stubs (no Root); the engine fetches them
-	Missing      map[string]bool // listed, but Fetch reports not found (deleted after listing)
+	CheckDetail  map[string]string // "verb group" -> Result.Detail from Check
+	Stubs        bool              // List returns stubs (no Root); the engine fetches them
+	Missing      map[string]bool   // listed, but Fetch reports not found (deleted after listing)
 	recs         map[string]*record
 	seq          int
 }
@@ -273,7 +274,7 @@ func (s session) Download(_ context.Context, resID, attID string, w io.Writer) (
 func (s session) Check(_ context.Context, req adapter.ApplyRequest) []adapter.Result {
 	var out []adapter.Result
 	for _, a := range req.Actions {
-		out = append(out, adapter.Result{Action: a, Err: s.fault(a)})
+		out = append(out, adapter.Result{Action: a, Err: s.fault(a), Detail: s.r.CheckDetail[a.Verb+" "+a.Group]})
 	}
 	return out
 }
