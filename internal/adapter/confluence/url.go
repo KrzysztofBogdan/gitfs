@@ -3,6 +3,7 @@ package confluence
 import (
 	"errors"
 	"fmt"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/atlassian"
 	"net/url"
 	"strings"
 
@@ -130,41 +131,10 @@ func parseTarget(u *url.URL, cfg map[string]string, getenv func(string) string, 
 	if b := n.Query().Get("base"); b != "" {
 		t.base = strings.TrimRight(b, "/")
 	}
-	email, err := resolveEmail(n, cfg, getenv, lk)
+	email, token, err := atlassian.Creds(n, cfg, getenv, lk, "GFS_CONFLUENCE")
 	if err != nil {
 		return target{}, err
 	}
-	if email == "" {
-		return target{}, fmt.Errorf("no identity for %s: run gfs auth set <email> --host %s, or put the email in the URL (confluence://me%%40x.com@%s)", t.host, t.host, t.host)
-	}
-	t.email = email
-	if t.token = getenv("GFS_CONFLUENCE_TOKEN"); t.token == "" {
-		tok, err := lk.Token(email)
-		if errors.Is(err, creds.ErrNotFound) {
-			return target{}, fmt.Errorf("no token for %s: run gfs auth set %s", email, email)
-		}
-		if err != nil {
-			return target{}, err
-		}
-		t.token = tok
-	}
+	t.email, t.token = email, token
 	return t, nil
-}
-
-// resolveEmail follows credentials spec §5: env, URL user, [remote] email,
-// host default, sole identity.
-func resolveEmail(u *url.URL, cfg map[string]string, getenv func(string) string, lk creds.Lookup) (string, error) {
-	if e := getenv("GFS_CONFLUENCE_EMAIL"); e != "" {
-		return e, nil
-	}
-	if u.User != nil && u.User.Username() != "" {
-		return u.User.Username(), nil
-	}
-	if e := cfg["email"]; e != "" {
-		return e, nil
-	}
-	if e, err := lk.HostEmail(u.Hostname()); err != nil || e != "" {
-		return e, err
-	}
-	return lk.SoleIdentity(), nil
 }

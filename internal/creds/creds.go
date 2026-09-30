@@ -49,7 +49,7 @@ type Identity struct {
 func key(email string) string { return Realm + ":" + strings.ToLower(email) }
 
 func unavailable(err error) error {
-	return fmt.Errorf("keyring unavailable (%v); set GFS_CONFLUENCE_TOKEN instead", err)
+	return fmt.Errorf("keyring unavailable (%v); set GFS_CONFLUENCE_TOKEN or GFS_JIRA_TOKEN instead", err)
 }
 
 func (s Store) listPath() string { return filepath.Join(s.Dirs.Config, "identities") }

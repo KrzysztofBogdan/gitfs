@@ -23,6 +23,8 @@ func authEnv(t *testing.T) string {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("GFS_CONFLUENCE_EMAIL", "")
 	t.Setenv("GFS_CONFLUENCE_TOKEN", "")
+	t.Setenv("GFS_JIRA_EMAIL", "")
+	t.Setenv("GFS_JIRA_TOKEN", "")
 	t.Chdir(home)
 	return home
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/atlassian"
 	"github.com/KrzysztofBogdan/gitfs/internal/creds"
 )
 
@@ -65,7 +65,7 @@ func newAuthSet() *cobra.Command {
 				if base == "" {
 					base = "https://" + host
 				}
-				name, err := confluence.VerifyToken(cmd.Context(), base, email, token)
+				name, err := atlassian.VerifyToken(cmd.Context(), base, email, token)
 				if err != nil {
 					return &ExitError{Code: 1, Err: fmt.Errorf("verify on %s: %w", host, err)}
 				}

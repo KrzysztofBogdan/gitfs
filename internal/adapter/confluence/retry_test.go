@@ -3,6 +3,7 @@ package confluence
 import (
 	"context"
 	"errors"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/atlassian"
 	"net/http"
 	"strings"
 	"testing"
@@ -21,8 +22,8 @@ func retrying(t *testing.T) (*cftest.Server, *client, *[]time.Duration, *[]strin
 	c := newClient(target{base: s.URL, email: "me@x.com", token: "t"})
 	var waits []time.Duration
 	var notes []string
-	c.sleep = func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return ctx.Err() }
-	c.onWait = func(msg string) { notes = append(notes, msg) }
+	c.Sleep = func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return ctx.Err() }
+	c.OnWait = func(msg string) { notes = append(notes, msg) }
 	return s, c, &waits, &notes
 }
 
@@ -47,7 +48,7 @@ func TestRetry429HonoursRetryAfter(t *testing.T) {
 func TestRetryAfterHTTPDate(t *testing.T) {
 	s, c, waits, _ := retrying(t)
 	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
-	c.now = func() time.Time { return now }
+	c.Now = func() time.Time { return now }
 	s.Failures = map[string]*cftest.Failure{"GET /wiki/api/v2/pages/1": {Status: 429, Times: 1, RetryAfter: now.Add(7 * time.Second).Format(http.TimeFormat)}}
 	if err := getPage(c); err != nil || len(*waits) != 1 || (*waits)[0] != 7*time.Second {
 		t.Fatalf("%v %v", *waits, err)
@@ -99,8 +100,8 @@ func TestRetryGivesUp(t *testing.T) {
 	if err := getPage(c); !errors.As(err, &ae) || ae.Status != 429 {
 		t.Fatalf("got %v", err)
 	}
-	if len(*waits) != maxAttempts-1 {
-		t.Fatalf("%d waits, want %d", len(*waits), maxAttempts-1)
+	if len(*waits) != atlassian.MaxAttempts-1 {
+		t.Fatalf("%d waits, want %d", len(*waits), atlassian.MaxAttempts-1)
 	}
 }
 
@@ -111,7 +112,7 @@ func TestRetryGivesUpPastTotalWait(t *testing.T) {
 		t.Fatal("want an error")
 	}
 	if len(*waits) != 1 {
-		t.Fatalf("waits %v: a second 200s wait would pass the %v cap", *waits, maxTotalWait)
+		t.Fatalf("waits %v: a second 200s wait would pass the %v cap", *waits, atlassian.MaxTotalWait)
 	}
 }
 
@@ -119,7 +120,7 @@ func TestRetryStopsOnCancel(t *testing.T) {
 	s, c, _, _ := retrying(t)
 	s.Failures = map[string]*cftest.Failure{"GET /wiki/api/v2/pages/1": {Status: 429, Times: 5}}
 	ctx, cancel := context.WithCancel(bg)
-	c.sleep = func(context.Context, time.Duration) error { cancel(); return context.Canceled }
+	c.Sleep = func(context.Context, time.Duration) error { cancel(); return context.Canceled }
 	if err := c.do(ctx, http.MethodGet, "/wiki/api/v2/pages/1", nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("got %v", err)
 	}
