@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/attach"
@@ -32,8 +33,14 @@ func (r PullReport) ExitCode() int {
 	return 0
 }
 
-func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
-	var r PullReport
+func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
+	e.Batch = true
+	defer func() {
+		e.Batch = false
+		if serr := e.saveIndex(true); err == nil {
+			err = serr
+		}
+	}()
 	s := e.Adapter.Schema()
 	cs, err := changes.Compute(e.Tree, e.Index, e.Adapter, nil)
 	if err != nil {
@@ -214,11 +221,9 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 	for _, id := range l.Deleted {
 		gone[id] = true
 	}
-	if l.Full {
-		for _, en := range e.Index.All() {
-			if !listed[en.ID] {
-				gone[en.ID] = true
-			}
+	for _, en := range e.Index.All() {
+		if !listed[en.ID] && (l.Full || underAny(en.Path, l.FullDirs)) {
+			gone[en.ID] = true
 		}
 	}
 	for id := range gone {
@@ -254,9 +259,6 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 	}
 	if !keepCursor {
 		e.Index.Cursor = l.Cursor
-	}
-	if err := e.Tree.SaveIndex(e.Index); err != nil {
-		return r, err
 	}
 	if !printed {
 		fmt.Fprintln(e.Out, "Already up to date.")
@@ -407,4 +409,14 @@ func (e *Env) pullAttachments(ctx context.Context, o PullOpts, say func(string, 
 		}
 	}
 	return e.saveAtts()
+}
+
+// underAny reports whether p lies inside one of the top-level folders dirs.
+func underAny(p string, dirs []string) bool {
+	for _, d := range dirs {
+		if strings.HasPrefix(p, d+"/") {
+			return true
+		}
+	}
+	return false
 }

@@ -1,0 +1,10 @@
+<issue>
+  <summary>Rate limiter drops burst traffic</summary>
+  <type>Bug</type>
+  <priority>High</priority>
+  <labels><label>backend</label><label>p1</label></labels>
+  <description type="application/vnd.atlassian.adf+xml">
+    <paragraph>Bursts above 200 rps are dropped instead of queued.</paragraph>
+    <paragraph>Reproduce with <code>hey -z 10s -q 300 http://localhost:8080/api</code>.</paragraph>
+  </description>
+</issue>

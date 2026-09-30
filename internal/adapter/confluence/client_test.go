@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/atlassian"
 	"net/url"
 	"reflect"
 	"strings"
@@ -86,11 +87,11 @@ func TestVerifyToken(t *testing.T) {
 	s := cftest.New()
 	defer s.Close()
 	s.Accounts = map[string]string{"me@x.com": "good"}
-	name, err := VerifyToken(context.Background(), s.URL, "me@x.com", "good")
+	name, err := atlassian.VerifyToken(context.Background(), s.URL, "me@x.com", "good")
 	if err != nil || name != "Me" {
 		t.Fatalf("got %q %v", name, err)
 	}
-	_, err = VerifyToken(context.Background(), s.URL, "me@x.com", "bad")
+	_, err = atlassian.VerifyToken(context.Background(), s.URL, "me@x.com", "bad")
 	var ae *APIError
 	if !errors.As(err, &ae) || ae.Status != 401 {
 		t.Fatalf("bad token: %v", err)

@@ -26,7 +26,7 @@ type Elem struct {
 	Sorted    bool     // List only: items are unordered, sort by text
 	Attrs     []Attr   // declared attributes in canonical order
 	ID        string   // Sub, Attachment: identity attribute
-	SortKey   string   // Sub, Attachment: attribute to sort by
+	SortKey   string   // Sub, Attachment, repeated Field: attribute to sort by
 	Children  []Elem   // Sub only: declared nested elements (e.g. reply)
 	BodyTypes []string // Body only: allowed values of the type attribute
 

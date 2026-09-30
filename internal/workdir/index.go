@@ -11,27 +11,10 @@ import (
 
 type Entry struct{ ID, Version, Path string }
 
-type Index struct {
-	Cursor string
-	byID   map[string]Entry
-}
-
 func (ix *Index) ByID(id string) (Entry, bool) {
 	e, ok := ix.byID[id]
 	return e, ok
 }
-
-func (ix *Index) ByPath(path string) (Entry, bool) {
-	for _, e := range ix.byID {
-		if e.Path == path {
-			return e, true
-		}
-	}
-	return Entry{}, false
-}
-
-func (ix *Index) Put(e Entry)      { ix.byID[e.ID] = e }
-func (ix *Index) Delete(id string) { delete(ix.byID, id) }
 
 func (ix *Index) All() []Entry {
 	out := make([]Entry, 0, len(ix.byID))
@@ -47,7 +30,7 @@ func (t *Tree) LoadIndex() (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	ix := &Index{byID: map[string]Entry{}}
+	ix := &Index{byID: map[string]Entry{}, byPath: map[string]string{}}
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	for n := 1; sc.Scan(); n++ {
 		line := sc.Text()
@@ -76,4 +59,33 @@ func (t *Tree) SaveIndex(ix *Index) error {
 		fmt.Fprintf(&b, "%s\t%s\t%s\n", e.ID, e.Version, e.Path)
 	}
 	return writeAtomic(t.gfs("index"), b.Bytes())
+}
+
+type Index struct {
+	Cursor string
+	byID   map[string]Entry
+	byPath map[string]string // path -> id
+}
+
+func (ix *Index) ByPath(path string) (Entry, bool) {
+	id, ok := ix.byPath[path]
+	if !ok {
+		return Entry{}, false
+	}
+	return ix.byID[id], true
+}
+
+func (ix *Index) Put(e Entry) {
+	if old, ok := ix.byID[e.ID]; ok && ix.byPath[old.Path] == e.ID {
+		delete(ix.byPath, old.Path)
+	}
+	ix.byID[e.ID] = e
+	ix.byPath[e.Path] = e.ID
+}
+
+func (ix *Index) Delete(id string) {
+	if old, ok := ix.byID[id]; ok && ix.byPath[old.Path] == id {
+		delete(ix.byPath, old.Path)
+	}
+	delete(ix.byID, id)
 }

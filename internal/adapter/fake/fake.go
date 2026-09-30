@@ -3,6 +3,7 @@ package fake
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -54,8 +55,15 @@ type Remote struct {
 	Published    []string         // "path channel"
 	Downloads    int              // successful Download calls
 	Cursors      []string         // cursor passed to each List call
-	Stubs        bool             // List returns stubs (no Root); the engine fetches them
-	Missing      map[string]bool  // listed, but Fetch reports not found (deleted after listing)
+	Partial      bool             // List returns Full: false
+	FullDirs     []string         // returned as Listing.FullDirs
+	CacheDir     string           // last UseCache argument
+	Advice       map[string]adapter.Advice
+	CheckDetail  map[string]string // "verb group" -> Result.Detail from Check
+	Stubs        bool              // List returns stubs (no Root); the engine fetches them
+	Missing      map[string]bool   // listed, but Fetch reports not found (deleted after listing)
+	FetchLimit   int               // Fetch fails after this many calls (0: never)
+	fetches      int
 	recs         map[string]*record
 	seq          int
 }
@@ -232,7 +240,7 @@ func (s session) Close() error { return nil }
 
 func (s session) List(_ context.Context, cursor string) (adapter.Listing, error) {
 	s.r.Cursors = append(s.r.Cursors, cursor)
-	l := adapter.Listing{Full: true, Cursor: "c1"}
+	l := adapter.Listing{Full: !s.r.Partial, FullDirs: s.r.FullDirs, Cursor: "c1"}
 	for id, rec := range s.r.recs {
 		res := *s.r.resource(id, rec)
 		if s.r.Stubs {
@@ -244,6 +252,9 @@ func (s session) List(_ context.Context, cursor string) (adapter.Listing, error)
 }
 
 func (s session) Fetch(_ context.Context, id string) (*adapter.Resource, error) {
+	if s.r.fetches++; s.r.FetchLimit > 0 && s.r.fetches > s.r.FetchLimit {
+		return nil, errors.New("fetch failed")
+	}
 	res, ok := s.r.Get(id)
 	if !ok || s.r.Missing[id] {
 		return nil, adapter.ErrNotFound
@@ -269,7 +280,7 @@ func (s session) Download(_ context.Context, resID, attID string, w io.Writer) (
 func (s session) Check(_ context.Context, req adapter.ApplyRequest) []adapter.Result {
 	var out []adapter.Result
 	for _, a := range req.Actions {
-		out = append(out, adapter.Result{Action: a, Err: s.fault(a)})
+		out = append(out, adapter.Result{Action: a, Err: s.fault(a), Detail: s.r.CheckDetail[a.Verb+" "+a.Group]})
 	}
 	return out
 }
@@ -451,4 +462,10 @@ func (s session) applySub(dst, src *xmltree.Node, a adapter.Action) {
 		}
 		dst.Children = kept
 	}
+}
+
+func (s session) UseCache(dir string) { s.r.CacheDir = dir }
+
+func (s session) Available(_ context.Context, id string, _ *adapter.Resource) (adapter.Advice, error) {
+	return s.r.Advice[id], nil
 }

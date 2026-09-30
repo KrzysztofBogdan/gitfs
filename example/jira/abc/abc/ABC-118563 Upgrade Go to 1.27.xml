@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <issue id="40313" key="ABC-118563" created="2026-09-10T11:00:00.000+0200" updated="2026-09-10T11:00:00.000+0200">
+      <summary>Upgrade Go to 1.27</summary>
+      <type>Task</type>
+      <status>To Do</status>
+      <assignee account="712020:bob">Bob</assignee>
+      <reporter account="712020:alice">Alice</reporter>
+      <creator account="712020:alice">Alice</creator>
+      <field id="customfield_10016" name="Story Points">3</field>
+    </issue>
+  </content>
+</gfs>

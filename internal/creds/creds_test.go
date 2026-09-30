@@ -126,7 +126,7 @@ func TestKeyringUnavailable(t *testing.T) {
 	s := testStore(t)
 	keyring.MockInitWithError(errors.New("no dbus"))
 	defer keyring.MockInit()
-	want := "keyring unavailable (no dbus); set GFS_CONFLUENCE_TOKEN instead"
+	want := "keyring unavailable (no dbus); set GFS_CONFLUENCE_TOKEN or GFS_JIRA_TOKEN instead"
 	if _, _, err := s.Get("a@x.com"); err == nil || err.Error() != want {
 		t.Fatalf("get: %v", err)
 	}

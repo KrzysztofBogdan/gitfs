@@ -36,3 +36,10 @@ func TestDecide(t *testing.T) {
 		t.Fatal("want error for bad level")
 	}
 }
+
+func TestReplyAndApproveAsk(t *testing.T) {
+	p, _ := FromConfig(nil)
+	if p.Level("reply") != Ask || p.Level("approve") != Ask || p.Level("comment") != Allow {
+		t.Fatal(p.Level("reply"), p.Level("approve"), p.Level("comment"))
+	}
+}

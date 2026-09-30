@@ -77,7 +77,11 @@ type Listing struct {
 	Resources []Resource
 	Deleted   []string
 	Full      bool
-	Cursor    string
+	// FullDirs are top-level folders this listing covers completely even when
+	// Full is false: an indexed resource under one of them that the listing
+	// omits was deleted on the remote.
+	FullDirs []string
+	Cursor   string
 }
 
 type ApplyRequest struct {
@@ -157,4 +161,32 @@ type Normalizer interface {
 // is not known to store unchanged (storage reference spec §3.2).
 type Linter interface {
 	Lint(root *xmltree.Node) []string
+}
+
+// Cacher is implemented by sessions that keep metadata between runs. The
+// engine passes <tree>/.gfs/cache (possibly not yet created) before listing
+// or applying; the session owns what it writes there.
+type Cacher interface{ UseCache(dir string) }
+
+// Advisor is implemented by sessions that can say what the user may do to one
+// resource now (jira spec §8). local is the file's current content.
+type Advisor interface {
+	Available(ctx context.Context, id string, local *Resource) (Advice, error)
+}
+
+type Advice struct {
+	State string // shown after the path, e.g. "status: In Progress"
+	Items []Available
+	Note  string // e.g. what the local <status> resolves to
+}
+
+type Available struct {
+	Verb, Name, To string // "transition", "Resolve this issue", "Closed"
+	Fields         []AvailableField
+}
+
+type AvailableField struct {
+	Element  string // "resolution", "field[id=customfield_10040]"
+	Required bool
+	Allowed  []string // shown when there are at most 8
 }

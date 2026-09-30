@@ -198,7 +198,11 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 			e.line(a.Verb, actPath(fc, a), a.To, "FAIL", oneLine(checks[i].Err))
 			continue
 		}
-		e.line(a.Verb, actPath(fc, a), a.To, "would run", strings.TrimSpace(a.Detail+"  "+mark))
+		detail := a.Detail
+		if i < len(checks) && checks[i].Detail != "" {
+			detail = checks[i].Detail // what Check resolved the action to
+		}
+		e.line(a.Verb, actPath(fc, a), a.To, "would run", strings.TrimSpace(detail+"  "+mark))
 	}
 }
 

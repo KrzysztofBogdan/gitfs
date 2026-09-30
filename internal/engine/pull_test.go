@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -144,5 +145,40 @@ func TestPullFullPassesEmptyCursor(t *testing.T) {
 	pull(t, env, PullOpts{Full: true})
 	if got := strings.Join(ad.Remote.Cursors, ","); got != ",c1," {
 		t.Fatalf("cursors passed to List (clone, pull, pull --full): %q", got)
+	}
+}
+
+// A partial listing that covers folder a/ completely deletes a/ files it omits
+// and leaves other folders alone.
+func TestPullFullDirs(t *testing.T) {
+	env, ad, out := cloned(t)
+	ad.Remote.Partial = true
+	ad.Remote.FullDirs = []string{"a"}
+	for _, e := range env.Index.All() {
+		if strings.HasPrefix(e.Path, "a/") {
+			ad.Remote.Delete(e.ID)
+		}
+	}
+	gone := 0
+	for _, e := range env.Index.All() {
+		if strings.HasPrefix(e.Path, "a/") {
+			gone++
+		}
+	}
+	r := pull(t, env, PullOpts{})
+	if r.Deleted != gone || gone == 0 {
+		t.Fatalf("deleted %d of %d\n%s", r.Deleted, gone, out)
+	}
+	for _, e := range env.Index.All() {
+		if strings.HasPrefix(e.Path, "a/") {
+			t.Fatalf("%s still indexed", e.Path)
+		}
+	}
+}
+
+func TestCloneGivesCacheDir(t *testing.T) {
+	env, ad, _ := cloned(t)
+	if want := filepath.Join(env.Tree.Root, ".gfs", "cache"); ad.Remote.CacheDir != want {
+		t.Fatalf("cache dir %q, want %q", ad.Remote.CacheDir, want)
 	}
 }

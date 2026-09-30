@@ -23,6 +23,11 @@ type Env struct {
 	Now     func() time.Time
 	// Progress, when set, hears the steps of clone and pull, for display.
 	Progress func(adapter.Progress)
+	// Batch defers index saves to every batchSize changes; clone and pull
+	// set it and save once at the end. IndexSaves counts writes, for tests.
+	Batch      bool
+	IndexSaves int
+	pending    int
 }
 
 func (e *Env) report(p adapter.Progress) {
@@ -57,7 +62,7 @@ func (e *Env) StoreBase(res *adapter.Resource, oldPath string) error {
 		return err
 	}
 	e.Index.Put(workdir.Entry{ID: res.ID, Version: res.Version, Path: res.Path})
-	return e.Tree.SaveIndex(e.Index)
+	return e.saveIndex(false)
 }
 
 func (e *Env) Forget(id, path string) error {
@@ -73,7 +78,7 @@ func (e *Env) Forget(id, path string) error {
 		return err
 	}
 	e.Index.Delete(id)
-	return e.Tree.SaveIndex(e.Index)
+	return e.saveIndex(false)
 }
 
 func (e *Env) Log(verb, path, newPath, outcome, detail string) {
@@ -93,4 +98,18 @@ func (e *Env) Resolved(ctx context.Context, r adapter.Resource) (*adapter.Resour
 		return &r, nil
 	}
 	return e.Session.Fetch(ctx, r.ID)
+}
+
+const batchSize = 500
+
+// saveIndex writes the index now, or every batchSize calls while batching.
+func (e *Env) saveIndex(force bool) error {
+	if e.Batch && !force {
+		if e.pending++; e.pending < batchSize {
+			return nil
+		}
+	}
+	e.pending = 0
+	e.IndexSaves++
+	return e.Tree.SaveIndex(e.Index)
 }

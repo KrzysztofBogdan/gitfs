@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <people id="people">
+      <person account="712020:alice" type="atlassian" active="true" email="alice@example.com">Alice</person>
+      <person account="712020:bob" type="atlassian" active="true">Bob</person>
+    </people>
+  </content>
+</gfs>
