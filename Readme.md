@@ -1,6 +1,205 @@
+<p align="center">
+    <h1 align="center">gfs</h1>
+</p>
+<hr>
+<h3 align="center">Net services as files</h3>
+<p align="center">gfs mirrors a net service as a directory of XML files, so humans and coding agents can read, search and change it with ordinary file tools.</p>
+<p align="center">
+    <a href="https://github.com/KrzysztofBogdan/gitfs/releases">Releases</a> ·
+    <a href="start.md">Documentation</a> ·
+    <a href="example/">Examples</a> ·
+    <a href="https://github.com/KrzysztofBogdan/gitfs/issues">Issues</a>
+</p>
+<p align="center">
+    <a href="https://github.com/KrzysztofBogdan/gitfs/releases/latest"><img src="https://img.shields.io/github/v/release/KrzysztofBogdan/gitfs" alt="Latest release"></a>
+    &nbsp;
+    <a href="https://github.com/KrzysztofBogdan/gitfs/actions/workflows/release.yml"><img src="https://github.com/KrzysztofBogdan/gitfs/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+    &nbsp;
+    <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/KrzysztofBogdan/gitfs" alt="Go version"></a>
+</p>
+
+<hr>
+
 (Warning: This is written by human but added em dashes so you will never be sure).
 
-# Background
+### Menu
+
+- [Features](#features)
+- [Install](#install)
+    - [Linux and macOS](#linux-and-macos)
+    - [Windows](#windows)
+    - [With Go](#with-go)
+- [Build from source](#build-from-source)
+    - [For development](#for-development)
+    - [With version information](#with-version-information)
+    - [Releasing](#releasing)
+- [Quick start](#quick-start)
+- [Design](#design)
+- [Status](#status)
+- [Background](#background)
+- [What is GitFS](#what-is-gitfs)
+- [Comparison with git](#comparison-with-git)
+
+
+## Features
+
+- **One file shape for every service**: an XML document with a `<gfs>` envelope around the resource
+- **Git vocabulary**: `clone`, `status`, `diff`, `commit`, `pull`, `resolve`, `log`
+- **Plan before it fires**: `gfs status` and `gfs commit --dry-run` print the remote actions a change resolves to
+- **Policy on irreversible verbs**: `send`, `delete` and `publish` ask first, and on a non-terminal `ask` means `deny`
+- **Three-way merge** when the remote changed under you, with `gfs resolve --ours | --theirs` for conflicts
+- **Errors land in the file** you are already looking at, and `.gfs/log` keeps the audit trail
+- **Attachments on demand** with `gfs get`
+- **Tokens in the system keyring** (macOS Keychain, Windows Credential Manager, Secret Service on Linux)
+- **Single static binary**, no runtime dependencies
+- Built for coding agents, validated with plain `xmllint` (`gfs schema` prints a RELAX NG schema)
+
+
+## Install
+
+The simplest way is to download `gfs` from [GitHub Releases](https://github.com/KrzysztofBogdan/gitfs/releases) and put the executable in your `PATH`.
+Builds exist for Linux, macOS and Windows, on `amd64` and `arm64`.
+
+### Linux and macOS
+
+Pick the archive for your system: `linux_amd64`, `linux_arm64`, `darwin_amd64` (Intel Mac) or `darwin_arm64` (Apple silicon).
+
+```bash
+$ curl -sL https://github.com/KrzysztofBogdan/gitfs/releases/latest/download/gfs_linux_amd64.tar.gz | tar xz gfs
+$ mkdir -p ~/.local/bin && mv gfs ~/.local/bin/
+$ gfs --version
+```
+
+`~/.local/bin` must be on your `PATH`; any other directory on it works too.
+
+_**macOS:** a binary downloaded with `curl` runs as is. If you downloaded the archive in a browser, macOS blocks the unsigned binary; clear the quarantine flag with `xattr -d com.apple.quarantine gfs`._
+
+_**Linux:** tokens are kept through the Secret Service (GNOME Keyring, KWallet). On a headless machine without one, use the `GFS_CONFLUENCE_EMAIL` and `GFS_CONFLUENCE_TOKEN` environment variables instead._
+
+### Windows
+
+In PowerShell (use `gfs_windows_arm64.zip` on ARM):
+
+```powershell
+PS> Invoke-WebRequest https://github.com/KrzysztofBogdan/gitfs/releases/latest/download/gfs_windows_amd64.zip -OutFile gfs.zip
+PS> Expand-Archive gfs.zip -DestinationPath "$env:LOCALAPPDATA\gfs"
+PS> $p = [Environment]::GetEnvironmentVariable("Path", "User")
+PS> [Environment]::SetEnvironmentVariable("Path", "$p;$env:LOCALAPPDATA\gfs", "User")
+```
+
+Open a new terminal and run `gfs --version`. SmartScreen may warn about the unsigned `gfs.exe` on first run.
+
+### With Go
+
+If you have [Go 1.25 or newer](https://go.dev/dl/):
+
+```bash
+$ go install github.com/KrzysztofBogdan/gitfs/cmd/gfs@latest
+```
+
+The binary lands in `$(go env GOPATH)/bin`.
+
+Every release lists its archives and a `checksums.txt` (`sha256sum --ignore-missing -c checksums.txt`).
+
+
+## Build from source
+
+Requirements:
+
+- [Go 1.25 or newer](https://go.dev/dl/)
+
+### For development
+
+```bash
+$ git clone https://github.com/KrzysztofBogdan/gitfs.git
+$ cd gitfs
+$ go build -o gfs ./cmd/gfs
+```
+
+or build and install into `~/.local/bin` (override with `INSTALL_DIR`):
+
+```bash
+$ ./install.sh
+```
+
+These builds report `gfs version dev`. Run the tests with:
+
+```bash
+$ go test ./...
+```
+
+### With version information
+
+The version is stamped at link time:
+
+```bash
+$ go build -ldflags "-X github.com/KrzysztofBogdan/gitfs/internal/cli.Version=v0.1.1" -o gfs ./cmd/gfs
+```
+
+To build every release archive locally, exactly as CI does, use [GoReleaser](https://goreleaser.com); the output goes to `dist/`:
+
+```bash
+$ go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+```
+
+### Releasing
+
+Push a `v*` tag. The [release workflow](.github/workflows/release.yml) runs the tests, builds all archives with [`.goreleaser.yaml`](.goreleaser.yaml) and publishes a GitHub Release:
+
+```bash
+$ git tag v0.2.0 && git push origin v0.2.0
+```
+
+
+## Quick start
+
+`gfs start` prints the overview of commands, files, policy and credentials; `gfs confluence` explains the Confluence layout.
+
+```bash
+$ gfs auth set me@example.com --host acme.atlassian.net      # asks for the Atlassian API token, keeps it in the system keyring
+$ gfs clone confluence://acme.atlassian.net/ENG confluence   # the working tree remembers me@example.com
+$ cd confluence
+$ gfs get eng/Home/Runbooks.xml      # download a page's attachments into eng/Home/Runbooks.files/
+$ vim eng/Home/Architecture.xml
+$ gfs status
+$ gfs commit --dry-run
+$ gfs commit
+```
+
+`gfs auth list` shows stored identities (tokens stored by `alogin` are used too), `gfs auth rm <email>` and
+`gfs auth clear` delete gfs's own tokens. `GFS_CONFLUENCE_EMAIL` and `GFS_CONFLUENCE_TOKEN` override
+everything ([credentials design](docs/superpowers/specs/2026-09-24-gfs-credentials-design.md)).
+
+
+## Design
+
+Earlier versions of this README sketched three shapes for the CLI. The one gfs follows is the git-shaped one:
+the file is the interface, `commit` is the single trigger, and the intent lives in the file only when a file change cannot express it.
+
+In one sentence: **a file change means "make the remote look like my working tree"; anything more than that is written explicitly into the file's envelope; anything irreversible is gated by policy.**
+
+- **Every file is XML.** The `<gfs>` envelope carries sync state (identity, remote version, errors); `<content>` holds the resource in the service's native format. No Markdown conversion in either direction.
+- **Implicit actions from the diff.** A new file is `create`, a changed element is `update`, a removed file or sub-resource is `delete`, a moved file is `move`. Adding a comment or a worklog is inserting one element.
+- **Explicit verbs only where the change is ambiguous.** A new mail in `drafts/` is stored, never sent. Sending is a one-line edit to the envelope, `action="send"`. `gfs actions` lists the verbs a remote understands.
+- **Policy, not trust.** `.gfs/config` sets each verb to `allow`, `ask` or `deny`. `send`, `delete` and `publish` default to `ask`, and `ask` without a terminal is `deny`. `gfs commit --allow send` is a distinct command shape, so an agent's permission system can allow `gfs commit` and still block `--allow`.
+- **Nothing is reserved in the tree.** No `outbox/` folder that could clash with a service's own folder; gfs keeps its state in `.gfs/` (`config`, `base/`, `index`, `log`).
+- **No daemon, no FUSE mount.** Everything happens in `clone`, `pull` and `commit`, so there is always a review step before anything fires.
+
+The other two shapes were dropped. Service-specific verbs (`gfs jira transition ...`) meant learning a per-service API again, the MCP problem in small; a Jira status change is just an edit of `<status>`. A filesystem mount had no dry-run and reported errors asynchronously.
+
+The full design is in [`docs/superpowers/specs/2026-09-23-gfs-cli-design.md`](docs/superpowers/specs/2026-09-23-gfs-cli-design.md); [`example/`](example/) shows how every adapter's files are meant to look, including the mail send-vs-store case.
+
+
+## Status
+
+Implemented: the shared core (XML file model, canonical printer, status/diff/commit/pull/resolve/log/actions,
+three-way merge, policy) and one adapter, **Confluence Cloud**, with attachments listed in every page and
+downloaded on demand ([attachments design](docs/superpowers/specs/2026-09-23-gfs-attachments-design.md)).
+
+Next: **Jira** ([design](docs/superpowers/specs/2026-09-29-jira-adapter-design.md)). Mail, Slack, DNS and X exist as examples in [`example/`](example/).
+
+
+## Background
 
 AI coding agents — think Claude Code, Codex, Claw Code — changed the way we do programming.
 
@@ -31,7 +230,7 @@ Calling MCP sometimes fails for unknown reasons. MCP calls usually take time (wh
 It is not always clear what the result of calling MCP is.
 
 
-# What is GitFS
+## What is GitFS
 What if we could represent net services (web/network tools or services, SaaS, IaaS, FaaS) as files?
 
 Examples of net services:
@@ -84,86 +283,7 @@ What if we could write a post on social media by creating a file?
 Dead internet theory at its finest.
 
 
-# Current repo state
-
-The CLI is implemented in Go and follows `docs/superpowers/specs/2026-09-23-gfs-cli-design.md`.
-Implemented: the shared core (XML file model, canonical printer, status/diff/commit/pull/resolve/log/actions,
-three-way merge, policy) and one adapter, **Confluence Cloud**. Attachments are listed in every page and
-downloaded on demand with `gfs get` (`docs/superpowers/specs/2026-09-23-gfs-attachments-design.md`).
-
-```shell
-gfs auth set me@example.com --host acme.atlassian.net   # asks for the Atlassian API token, keeps it in the system keyring
-gfs clone confluence://acme.atlassian.net/ENG confluence   # the working tree remembers me@example.com
-cd confluence
-gfs get eng/Home/Runbooks.xml      # download a page's attachments into eng/Home/Runbooks.files/
-vim eng/Home/Architecture.xml
-gfs status
-gfs commit --dry-run
-gfs commit
-```
-
-`gfs auth list` shows stored identities (tokens stored by `alogin` are used too), `gfs auth rm <email>` and
-`gfs auth clear` delete gfs's own tokens. `GFS_CONFLUENCE_EMAIL` and `GFS_CONFLUENCE_TOKEN` still override
-everything (`docs/superpowers/specs/2026-09-24-gfs-credentials-design.md`).
-
-See `example/` for how every adapter's files are meant to look.
-
-
-# Some thoughts 
-I like the idea that commit will either edit or create a resource. But it comes with a few problems.
-
-Email (SMTP/IMAP) is an interesting case that does not work very well with
-this approach (at least I did not find a good approach).
-Mostly because IMAP is about managing emails and SMTP about sending emails.
-They can be used separately. You can put an email in the /sent folder but not send it to anyone.
-Or you could send an email but not store it in the /sent folder.
-
-
-So right now, after a successful send action, it should be stored in the sent folder.
-File (gfs commit) creation/update may alter the file.
-The email provider might append a footer during send, so the final sent email will look different than the one we committed.
-
-I thought putting an email in the /draft folder and `gfs commit` would send the email, but then
-how do we represent putting an email in the /draft folder (without sending)?
-
-Alternatively, a new command could be added. If an email is in the /draft folder (committed or not), for example:
-
-`gfs create /draft/new-email.md` # some general method (create=send)
-
-`gfs command smtp create /draft/new-email.md` # or maybe every integration could have special commands?
-
-`gfs smtp:create /draft/new-email.md` # alternative
-
-Another alternative would be the creation of a file in the existing sent folder `/sent/some-email.md` — and commit — but the problem is it is hard to differentiate if we want to move the email to the /sent folder without sending,
-or we want to send it and move to (keep in) the /sent folder.
-
-Creation is tricky.
-Let's take Jira for example.
-
-```shell
-gfs clone jira://instance-url/ABC gfs/jira/instance-name/abc # ABC is project-key
-
-tree gfs/jira/instance-name/abc
-```
-
-output:
-```
-.
-├── ABC-118561 Summary 1.md
-├── ABC-118562 Summary 2.md
-└── ABC-118563 Summary 3.md
-```
-
-Issues are flat, not like emails that have folders.
-How do we create an issue?
-
-Any Markdown file: `Summary 4.md` will get a key on commit and the file will be renamed to `ABC-118564 Summary 4.md`?
-Will we always require a special folder `/outbox`, and any file that is created there will represent new resource creation?
-What if a service that has folders (nesting) has outbox already taken?
-Even IMAP (email) could have an outbox folder that has some emails in it.
-
-
-# Comparison with git
+## Comparison with git
 
 GitFS borrows the mental model of git and the command vocabulary, but the remote is a net service instead of a git server.
 
@@ -177,132 +297,3 @@ GitFS borrows the mental model of git and the command vocabulary, but the remote
 | `git push`                              | — (folded into `gfs commit`)                           | In `gfs`, commit already talks to the remote, so there is no separate push step.                                                        |
 | tracks a branch history (DAG)           | tracks the current remote state                        | `gfs` is not a version control system — there is no history graph, just a local mirror of what the service has now.                    |
 | remote is content-addressed, immutable  | remote is a live mutating service                      | A Jira issue can change under you; an IMAP folder can be rearranged. `gfs pull` reconciles those mutations into the working tree.      |
-
-
-# CLI ideas (spike)
-
-Three shapes the CLI could take. They differ in one thing: where the *intent* lives
-(send vs. store, create vs. move). Each is shown on the same two scenarios: send an email, create a Jira issue.
-
-## Idea 1: Git-shaped, intent lives in the file
-
-Keep the git vocabulary exactly (`clone`, `status`, `diff`, `add`, `commit`, `pull`, `log`).
-No special folders. What `commit` should *do* with a file is written in the file itself, as frontmatter.
-Files without an action are just stored/moved; files with an action are executed, then the action key is removed.
-
-```shell
-gfs clone imap+smtp://kbogdan@dwa.ovh mail/
-cd mail
-
-# just a draft, nothing will be sent
-cat > drafts/re-dh.md <<'MD'
-to: bob@example.com
-subject: Re: Diffie–Hellman key exchange
----
-Hello Bob, ...
-MD
-gfs commit                 # stores in IMAP /Drafts, sends nothing
-
-# now send it: add an action, commit
-sed -i '1i action: send' drafts/re-dh.md
-gfs diff                   # shows the pending action, not only the text diff:
-#   drafts/re-dh.md   action: send  -> will be sent via smtp, then moved to sent/
-gfs commit --dry-run       # same as diff, but resolves everything the remote would do
-gfs commit                 # sends, file lands in sent/re-dh.md, action key gone
-```
-
-```shell
-gfs clone jira://instance/ABC jira/abc
-cat > jira/abc/Summary 4.md <<'MD'
-action: create
-type: Bug
----
-Steps to reproduce ...
-MD
-gfs commit                 # file renamed to "ABC-118564 Summary 4.md", action key removed
-gfs log                    # what commits did on the remote (sent, created ABC-118564, ...)
-```
-
-Service-specific actions are just values: `action: send`, `action: create`, `action: transition/Done`, `action: publish`.
-`gfs actions` lists what the current service understands.
-
-Pros: pure "edit a file" model, an agent needs zero CLI knowledge beyond `commit`.
-Move-vs-send ambiguity is gone because a move never has an action key.
-Cons: intent mixed with content, and a stale `action:` line committed by mistake fires a side effect.
-`--dry-run` is the safety net, so it must be first-class.
-
-## Idea 2: Verb-shaped, intent lives in the command
-
-Drop `commit` as the universal side-effect trigger. Files are the *payload*; the command is the *operation*.
-Generic CRUD verbs work everywhere, service-specific verbs live under the service name.
-`status` and `pull` stay for sync, plain edits + `gfs update` cover the "edit an existing resource" case.
-
-```shell
-gfs clone imap+smtp://kbogdan@dwa.ovh mail/
-cd mail
-
-vim drafts/re-dh.md
-gfs create drafts/re-dh.md              # stores in /Drafts (the folder decides the IMAP target)
-gfs smtp send drafts/re-dh.md           # sends; result file moves to sent/
-gfs mv sent/re-dh.md archive/2026/      # a move is always just a move
-gfs rm spam/*.md
-```
-
-```shell
-gfs clone jira://instance/ABC jira/abc
-vim "jira/abc/Summary 4.md"
-gfs create "jira/abc/Summary 4.md"      # -> ABC-118564 Summary 4.md
-vim "jira/abc/ABC-118564 Summary 4.md"  # edit description
-gfs update jira/abc/ABC-118564*         # or: gfs update .  (everything modified per status)
-gfs jira transition ABC-118564 --to "In Progress"
-gfs jira worklog ABC-118564 2h "reviewing PR"
-gfs jira --help                         # every service exposes its verbs here
-```
-
-Pros: zero ambiguity, discoverable via `--help`, easy to grant/deny per verb (an agent may `update` but never `send`).
-Cons: it is no longer "just files"; the agent has to learn per-service verbs, which is the MCP problem again in small.
-Also two ways to edit (`update` vs. a hypothetical `commit`) must not coexist.
-
-## Idea 3: Filesystem-shaped, intent lives in the directory
-
-No commands after `mount`. Every operation is a filesystem operation; the CLI is only a daemon
-plus a control directory. This is the most agent-friendly shape, because agents already know `mv`, `cat`, `grep`.
-
-```shell
-gfs mount imap+smtp://kbogdan@dwa.ovh ~/gfs/mail    # FUSE, or a watcher that applies on save
-tree -a ~/gfs/mail
-# .gfs/
-#   log          # append-only: what happened, one line per action
-#   errors/      # one file per failed action, with the original payload
-#   pull         # touch it to force a re-sync (daemon also syncs periodically)
-# inbox/  drafts/  sent/  archive/
-# outbox/        # the ONE reserved dir per service: create/execute happens here
-```
-
-```shell
-cp draft.md ~/gfs/mail/drafts/      # stored as a draft, nothing sent
-mv ~/gfs/mail/drafts/draft.md ~/gfs/mail/outbox/   # sent; daemon moves it to sent/ (or errors/)
-tail -f ~/gfs/mail/.gfs/log
-# 12:01:03 send    outbox/draft.md -> sent/draft.md  (message-id <...>)
-```
-
-```shell
-gfs mount jira://instance/ABC ~/gfs/jira/abc
-echo "..." > ~/gfs/jira/abc/outbox/Summary 4.md      # appears as "ABC-118564 Summary 4.md" once created
-echo "- 2h reviewing PR" >> ~/gfs/jira/abc/ABC-118564*/worklog.md   # sub-files for sub-resources
-mv ~/gfs/jira/abc/ABC-118564* ~/gfs/jira/abc/.gfs/transition/Done/  # state changes as moves
-```
-
-The reserved-name clash ("what if IMAP already has an outbox") is solved by namespacing: the reserved
-directory is `.gfs/outbox/` (or `_outbox/`), never a plain name the service could own.
-
-Pros: nothing to learn, works from any language, shell, or agent; observable via `log`.
-Cons: no dry-run and no "review before it fires", so it needs a `.gfs/hold` mode (queue, apply on `touch .gfs/go`)
-which quietly reinvents `commit`. Errors are asynchronous, so the agent must read `errors/` to know it failed.
-
-## Where I lean
-
-Idea 1 for the default (`commit` stays the single trigger, `--dry-run` shows the plan),
-with the reserved `.gfs/` namespace from idea 3 for logs/errors,
-and idea 2's `gfs <service> <verb>` as an escape hatch for actions that do not map to a file edit at all
-(transition, worklog, webhook replay). The frontmatter `action:` key is what resolves the send-vs-move problem.
