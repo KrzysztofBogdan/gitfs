@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/jira"
 	"io/fs"
 	"sort"
 	"strings"
@@ -26,6 +27,7 @@ func helpTopics() []*cobra.Command {
 	return []*cobra.Command{
 		{Use: "start", Short: "Overview of gfs commands, files, policy and credentials", Long: doc("start.md")},
 		{Use: "confluence", Short: "Confluence Cloud: URL, layout, page files, what each change does", Long: doc("docs/confluence.md")},
+		{Use: "jira", Short: "Jira Cloud and service desk portals: URLs, files, transitions, what each change does", Long: doc("docs/jira.md")},
 		{Use: "confluence-storage", Short: "Verified Confluence storage-format examples for page bodies", Long: doc("docs/confluence/storage.md")},
 	}
 }
@@ -43,10 +45,14 @@ func newSchema() *cobra.Command {
 		Short: "Print a RELAX NG schema for the adapter's files (xmllint --relaxng)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := onlyConfluence(args[0]); err != nil {
-				return err
+			switch args[0] {
+			case "confluence":
+				fmt.Fprint(cmd.OutOrStdout(), confluence.EmbeddedVocabulary().RelaxNG())
+			case "jira":
+				fmt.Fprint(cmd.OutOrStdout(), jira.RelaxNG())
+			default:
+				return usage("unknown adapter %q: want confluence or jira", args[0])
 			}
-			fmt.Fprint(cmd.OutOrStdout(), confluence.EmbeddedVocabulary().RelaxNG())
 			return nil
 		},
 	}

@@ -9,7 +9,7 @@ CLI *should* feel like.
 | folder        | remote                          | shows                                                   |
 |---------------|---------------------------------|---------------------------------------------------------|
 | `mail/`       | `imap+smtp://kbogdan@dwa.ovh`   | store vs. send, the `<gfs>` envelope with `action` and `<errors>`, a failed send, an HTML mail kept as HTML, attachments with duplicate names |
-| `jira/abc/`   | `jira://instance/ABC`           | create by new file, comments and worklog as child elements, transition by editing `<status>`, pull merging into pending work |
+| `jira/abc/`   | `jira://instance.atlassian.net/ABC` | create by new file, comments and worklog as child elements, transition by editing `<status>`, pull merging into pending work |
 | `slack/`      | `slack://warsawdynamics`        | post by adding a `<message>`, threads, day files, shared files |
 | `confluence/` | `confluence://instance/ENG`     | storage format untouched, version lock, a real merge conflict with `<conflict/>` in the envelope, attachments fetched on demand and a binary conflict |
 | `dns/`        | `cloudflare://example.com`      | records as elements, provider flags as attributes       |

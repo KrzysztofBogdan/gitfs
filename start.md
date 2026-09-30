@@ -1,11 +1,11 @@
 # gfs: getting started
 
-`gfs` mirrors a net service (Confluence today) as a directory of XML files.
+`gfs` mirrors a net service (Confluence and Jira today) as a directory of XML files.
 You edit files; `gfs commit` makes the remote look like your working tree.
 The vocabulary is git's, but the remote is a live service, not a repository:
 there is no history graph, only the current remote state.
 
-Service details: [docs/confluence.md](docs/confluence.md).
+Service details: [docs/confluence.md](docs/confluence.md), [docs/jira.md](docs/jira.md).
 
 ## Install
 
@@ -19,6 +19,7 @@ INSTALL_DIR=/some/dir ./install.sh
 ```shell
 gfs auth set me@example.com --host acme.atlassian.net   # once per account
 gfs clone confluence://acme.atlassian.net          # every space; or .../ENG for one
+# or: gfs clone jira://acme.atlassian.net          # every project; or .../GEN for one
 cd acme
 vim "eng/Home/Architecture.xml"
 gfs status                       # what will happen on the remote
@@ -54,7 +55,7 @@ current directory; no path means the whole tree.
 | `gfs schema <adapter>` | Print a RELAX NG schema for the adapter's files (`xmllint --relaxng`). |
 
 Built-in docs: `gfs help start` (this page), `gfs help confluence`,
-`gfs help confluence-storage`.
+`gfs help confluence-storage`, `gfs help jira`.
 
 ### commit flags
 
@@ -140,8 +141,9 @@ delete = ask
 * `allow`: run. `ask`: prompt `y/N` on a terminal; **without a terminal `ask`
   acts as `deny`**, so unattended runs never fire a gated action.
   `deny`: skip and report.
-* Defaults: everything `allow` except `delete` (and `send`, `publish` for
-  services that have them), which are `ask`.
+* Defaults: everything `allow` except `delete` (and `send`, `publish`,
+  `reply`, `approve` for services that have them), which are `ask`. Jira
+  `reply` is a public comment that emails a customer.
 * `gfs commit --allow delete` lifts `ask` for one run. An agent's permission
   rules can allow `gfs commit` and deny `gfs commit --allow`.
 
@@ -159,7 +161,7 @@ Tokens live in the system keyring, never in files. Tokens already stored by
 
 Which account a command uses, first match wins:
 
-1. `GFS_CONFLUENCE_EMAIL` (and `GFS_CONFLUENCE_TOKEN` for the token)
+1. `GFS_CONFLUENCE_EMAIL` or `GFS_JIRA_EMAIL` (and `GFS_CONFLUENCE_TOKEN` / `GFS_JIRA_TOKEN` for the token)
 2. the user in the URL: `confluence://me%40example.com@acme.atlassian.net/ENG`
 3. `[remote] email` in the working tree's `.gfs/config` (written by `clone`)
 4. the host default in `~/.config/gfs/config`:

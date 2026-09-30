@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <issue id="40311" key="ABC-118561" created="2026-09-02T09:30:00.000+0200" updated="2026-09-28T16:10:00.000+0200">
+      <summary>Retry loop never backs off</summary>
+      <type>Bug</type>
+      <status>Done</status>
+      <priority>High</priority>
+      <assignee account="712020:alice">Alice</assignee>
+      <reporter account="712020:bob">Bob</reporter>
+      <creator account="712020:bob">Bob</creator>
+      <labels>
+        <label>backend</label>
+      </labels>
+      <description type="application/vnd.atlassian.adf+xml">
+        <paragraph>The client retries every 10ms forever when the upstream returns 503.</paragraph>
+      </description>
+      <comment id="10043" account="712020:bob" author="Bob" created="2026-09-27T21:04:00.000+0200" updated="2026-09-27T21:04:00.000+0200">
+        <paragraph>Seen again in prod tonight.</paragraph>
+      </comment>
+      <comment>
+        <paragraph>Verified on staging, closing.</paragraph>
+      </comment>
+      <worklog>
+        <started>2026-09-29T09:00:00.000+0200</started>
+        <spent>2h</spent>
+      </worklog>
+    </issue>
+  </content>
+</gfs>

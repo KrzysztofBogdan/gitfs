@@ -17,7 +17,9 @@ func TestDocsCommands(t *testing.T) {
 	if err != nil || schema != string(want) {
 		t.Fatalf("gfs schema confluence differs from docs/confluence/storage.rng (%v)", err)
 	}
-	mustRun(t, 2, "schema", "jira")
+	mustContain(t, mustRun(t, 0, "schema", "jira"), "<grammar", `<element name="paragraph">`)
+	mustContain(t, mustRun(t, 0, "help", "jira"), "# gfs and Jira Cloud")
+	mustRun(t, 2, "schema", "slack")
 
 	mustContain(t, mustRun(t, 0, "example", "confluence"), "panel", "codeBlock")
 	if out := mustRun(t, 0, "example", "confluence", "rule/hr"); strings.TrimSpace(out) != "<hr/>" {
