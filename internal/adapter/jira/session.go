@@ -32,6 +32,7 @@ type session struct {
 	cacheDir  string // <tree>/.gfs/cache/jira; "" without a tree
 	report    func(adapter.Progress)
 	now       func() time.Time
+	linkTypes []linkType // issue link types, read on first use (subs.go)
 }
 
 func openSession(ctx context.Context, t target) (*session, error) {
