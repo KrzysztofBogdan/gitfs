@@ -20,8 +20,6 @@
 
 <hr>
 
-(Warning: This is written by human but added em dashes so you will never be sure).
-
 ### Menu
 
 - [Features](#features)
