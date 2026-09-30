@@ -9,7 +9,7 @@ const (
 	Deny  = "deny"
 )
 
-var defaults = map[string]string{"send": Ask, "delete": Ask, "publish": Ask}
+var defaults = map[string]string{"send": Ask, "delete": Ask, "publish": Ask, "reply": Ask, "approve": Ask}
 
 type Policy struct{ levels map[string]string }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -66,6 +67,9 @@ func openEnv(cmd *cobra.Command, lock bool) (*engine.Env, string, func(), error)
 	if err != nil {
 		unlock()
 		return nil, "", nil, err
+	}
+	if c, ok := sess.(adapter.Cacher); ok {
+		c.UseCache(filepath.Join(t.Root, workdir.Dir, "cache"))
 	}
 	if r, ok := sess.(adapter.Reporter); ok {
 		r.SetProgress(waitNotice(cmd.ErrOrStderr())) // commit, get, …: retry waits as lines

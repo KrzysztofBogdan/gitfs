@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
@@ -21,6 +22,9 @@ func Clone(ctx context.Context, ad adapter.Adapter, sess adapter.Session, rawURL
 	t, err := workdir.Init(dir, cfg)
 	if err != nil {
 		return nil, err
+	}
+	if c, ok := sess.(adapter.Cacher); ok {
+		c.UseCache(filepath.Join(t.Root, workdir.Dir, "cache"))
 	}
 	ix, err := t.LoadIndex()
 	if err != nil {

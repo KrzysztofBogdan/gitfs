@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/attach"
@@ -220,11 +221,9 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 	for _, id := range l.Deleted {
 		gone[id] = true
 	}
-	if l.Full {
-		for _, en := range e.Index.All() {
-			if !listed[en.ID] {
-				gone[en.ID] = true
-			}
+	for _, en := range e.Index.All() {
+		if !listed[en.ID] && (l.Full || underAny(en.Path, l.FullDirs)) {
+			gone[en.ID] = true
 		}
 	}
 	for id := range gone {
@@ -410,4 +409,14 @@ func (e *Env) pullAttachments(ctx context.Context, o PullOpts, say func(string, 
 		}
 	}
 	return e.saveAtts()
+}
+
+// underAny reports whether p lies inside one of the top-level folders dirs.
+func underAny(p string, dirs []string) bool {
+	for _, d := range dirs {
+		if strings.HasPrefix(p, d+"/") {
+			return true
+		}
+	}
+	return false
 }

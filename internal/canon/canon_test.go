@@ -63,3 +63,14 @@ func TestNormalizeIdempotent(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s\n---\n%s", once, twice)
 	}
 }
+
+func TestRepeatedFieldSortedByKey(t *testing.T) {
+	s := &schema.Schema{Root: "r", Elems: []schema.Elem{
+		{Name: "field", Kind: schema.Field, Repeated: true, SortKey: "id", Attrs: []schema.Attr{{Name: "id"}, {Name: "name"}}},
+	}}
+	root, _ := xmltree.ParseString(`<r><field name="b" id="c2">2</field><field>new</field><field id="c1">1</field></r>`)
+	Normalize(root, s)
+	if got := xmltree.Print(root, 0); got != "<r>\n  <field id=\"c1\">1</field>\n  <field id=\"c2\" name=\"b\">2</field>\n  <field>new</field>\n</r>" {
+		t.Fatal(got)
+	}
+}

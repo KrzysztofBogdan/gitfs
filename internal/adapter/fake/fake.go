@@ -54,6 +54,9 @@ type Remote struct {
 	Published    []string         // "path channel"
 	Downloads    int              // successful Download calls
 	Cursors      []string         // cursor passed to each List call
+	Partial      bool             // List returns Full: false
+	FullDirs     []string         // returned as Listing.FullDirs
+	CacheDir     string           // last UseCache argument
 	Stubs        bool             // List returns stubs (no Root); the engine fetches them
 	Missing      map[string]bool  // listed, but Fetch reports not found (deleted after listing)
 	recs         map[string]*record
@@ -232,7 +235,7 @@ func (s session) Close() error { return nil }
 
 func (s session) List(_ context.Context, cursor string) (adapter.Listing, error) {
 	s.r.Cursors = append(s.r.Cursors, cursor)
-	l := adapter.Listing{Full: true, Cursor: "c1"}
+	l := adapter.Listing{Full: !s.r.Partial, FullDirs: s.r.FullDirs, Cursor: "c1"}
 	for id, rec := range s.r.recs {
 		res := *s.r.resource(id, rec)
 		if s.r.Stubs {
@@ -452,3 +455,5 @@ func (s session) applySub(dst, src *xmltree.Node, a adapter.Action) {
 		dst.Children = kept
 	}
 }
+
+func (s session) UseCache(dir string) { s.r.CacheDir = dir }

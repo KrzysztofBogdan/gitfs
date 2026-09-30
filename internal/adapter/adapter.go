@@ -77,7 +77,11 @@ type Listing struct {
 	Resources []Resource
 	Deleted   []string
 	Full      bool
-	Cursor    string
+	// FullDirs are top-level folders this listing covers completely even when
+	// Full is false: an indexed resource under one of them that the listing
+	// omits was deleted on the remote.
+	FullDirs []string
+	Cursor   string
 }
 
 type ApplyRequest struct {
@@ -158,3 +162,8 @@ type Normalizer interface {
 type Linter interface {
 	Lint(root *xmltree.Node) []string
 }
+
+// Cacher is implemented by sessions that keep metadata between runs. The
+// engine passes <tree>/.gfs/cache (possibly not yet created) before listing
+// or applying; the session owns what it writes there.
+type Cacher interface{ UseCache(dir string) }
