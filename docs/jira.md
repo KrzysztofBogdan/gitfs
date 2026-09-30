@@ -215,7 +215,12 @@ Changing `<status>` runs one workflow transition.
 | file removed | delete the issue (refused while it has sub-tasks) | `delete` (ask) |
 
 * In a service project every new comment needs `internal="true"` or
-  `public="true"`; elsewhere neither is allowed. The visibility of an
+  `public="true"`; elsewhere neither is allowed. A new issue file with a
+  public comment is classed `reply` as a whole.
+* Jira Service Management also emails customers on its own for some
+  changes gfs classes `transition` or `update`: resolving a request, adding
+  a request participant. If that matters, set `transition = ask` in
+  `[policy]`. The visibility of an
   existing comment cannot be changed.
 * Links cannot be edited: remove the `<link>` and add a new one.
 * Jira attachments have no versions: an edited attachment file is refused;
@@ -269,7 +274,7 @@ ecosystem/
 |--------|--------|--------------|
 | new `<comment>` (plain text) | public reply: emails the service desk | `reply` (ask) |
 | `<status>` set to a transition name | customer transition (`gfs actions <file>` lists them) | `transition` |
-| `<participant account="…">` added or removed | participants (accounts only: customers cannot look people up; copy them from `.people.xml`) | `update` |
+| `<participant account="…">` added or removed | participants (accounts only: customers cannot look people up; copy them from `.people.xml`) | `delete` (ask: the change may remove people) |
 | `decision="approve"` or `"decline"` on a pending `<approval>` | answer the approval | `approve` (ask) |
 | file added in the `.files/` folder | attach publicly | `create` |
 | new file in a desk folder with `<summary>` and `<requestType>` | raise a request (its form's required fields must be there) | `create` |

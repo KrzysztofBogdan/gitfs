@@ -118,7 +118,7 @@ func TestDescribe(t *testing.T) {
 		a             adapter.Action
 		class, detail string
 	}{
-		{adapter.Action{Verb: "create"}, "create", "create Bug in GEN"},
+		{adapter.Action{Verb: "create"}, "reply", "create Bug in GEN with a public reply (emails the customer)"}, // the file has a public comment
 		{adapter.Action{Verb: "delete"}, "delete", "delete issue"},
 		{adapter.Action{Verb: "update", Group: "status"}, "transition", "transition to Closed"},
 		{adapter.Action{Verb: "update", Group: "field"}, "update", "update custom fields"},

@@ -86,6 +86,13 @@ func (*Adapter) Describe(a *adapter.Action, local *adapter.Resource) {
 			typ = "issue"
 		}
 		a.Detail = fmt.Sprintf("create %s in %s", typ, strings.ToUpper(topDir(p)))
+		for n := 1; nthNew(root, "comment", "id", n) != nil; n++ {
+			if attrIs(nthNew(root, "comment", "id", n), "public", "true") {
+				a.Class = "reply" // the new issue's public comment emails the customer
+				a.Detail += " with a public reply (emails the customer)"
+				break
+			}
+		}
 	case a.Verb == "delete":
 		a.Detail = "delete issue"
 	case a.Verb == "update" && a.Group == "status":

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/fake"
+	"github.com/KrzysztofBogdan/gitfs/internal/workdir"
 )
 
 // A clone of 1,200 resources must not rewrite the index once per resource.
@@ -39,5 +40,23 @@ func TestCloneBatchesIndexSaves(t *testing.T) {
 		t.Fatal("index unreadable")
 	} else if e, _ := ix.ByID("7"); e.Version != "2" {
 		t.Fatalf("entry 7 after pull: %+v", e)
+	}
+}
+
+// A clone that fails part way keeps what it stored tracked, so pull can finish it.
+func TestFailedCloneKeepsIndex(t *testing.T) {
+	ad := fake.New()
+	for i := 1; i <= 50; i++ {
+		ad.Remote.Put(fmt.Sprint(i), fmt.Sprintf("n/%04d.xml", i), `<note><title>t</title></note>`)
+	}
+	ad.Remote.Stubs, ad.Remote.FetchLimit = true, 20
+	sess, _ := ad.Open(ctx, nil, nil)
+	dir := t.TempDir() + "/wt"
+	if _, err := Clone(ctx, ad, sess, "fake://x", dir, &bytes.Buffer{}, nil); err == nil {
+		t.Fatal("want the fetch failure")
+	}
+	ix, err := (&workdir.Tree{Root: dir}).LoadIndex()
+	if err != nil || len(ix.All()) != 20 {
+		t.Fatalf("%d indexed, %v", len(ix.All()), err)
 	}
 }

@@ -3,6 +3,7 @@ package fake
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -61,6 +62,8 @@ type Remote struct {
 	CheckDetail  map[string]string // "verb group" -> Result.Detail from Check
 	Stubs        bool              // List returns stubs (no Root); the engine fetches them
 	Missing      map[string]bool   // listed, but Fetch reports not found (deleted after listing)
+	FetchLimit   int               // Fetch fails after this many calls (0: never)
+	fetches      int
 	recs         map[string]*record
 	seq          int
 }
@@ -249,6 +252,9 @@ func (s session) List(_ context.Context, cursor string) (adapter.Listing, error)
 }
 
 func (s session) Fetch(_ context.Context, id string) (*adapter.Resource, error) {
+	if s.r.fetches++; s.r.FetchLimit > 0 && s.r.fetches > s.r.FetchLimit {
+		return nil, errors.New("fetch failed")
+	}
 	res, ok := s.r.Get(id)
 	if !ok || s.r.Missing[id] {
 		return nil, adapter.ErrNotFound

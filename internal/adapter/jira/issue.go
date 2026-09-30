@@ -325,7 +325,7 @@ func (d decoder) issue(is apiIssue, set map[string]fieldMeta, comments []apiComm
 func textEl2(name, text string, attrs ...string) *xmltree.Node {
 	n := el(name, attrs...)
 	if text != "" {
-		n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: text}}
+		n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: xmlText(text)}}
 	}
 	return n
 }

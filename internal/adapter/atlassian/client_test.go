@@ -298,3 +298,12 @@ func TestRetryUsesAtlassianRateLimitHeaders(t *testing.T) {
 		t.Fatalf("notes %q", notes)
 	}
 }
+
+// A read sent as POST (Jira search) is retried on 503 like a GET.
+func TestDoReadRetriesUnavailable(t *testing.T) {
+	f := &flaky{status: 503, times: 1, body: "{}"}
+	c, waits, _ := retrying(t, f)
+	if err := c.DoRead(bg, "POST", "/rest/api/3/search/jql", map[string]int{"a": 1}, nil); err != nil || len(*waits) != 1 {
+		t.Fatalf("%v %v", err, *waits)
+	}
+}

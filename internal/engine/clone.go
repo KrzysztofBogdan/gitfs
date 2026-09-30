@@ -31,6 +31,11 @@ func Clone(ctx context.Context, ad adapter.Adapter, sess adapter.Session, rawURL
 		return nil, err
 	}
 	env := &Env{Tree: t, Index: ix, Atts: workdir.NewAttachments(), Adapter: ad, Session: sess, Out: out, Now: time.Now, Progress: progress, Batch: true}
+	defer func() { // a failed clone still tracks what it stored, so pull can finish it
+		if env.Batch {
+			env.saveIndex(true)
+		}
+	}()
 	env.report(adapter.Progress{Phase: "list"})
 	l, err := sess.List(ctx, "")
 	if err != nil {

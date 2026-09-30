@@ -64,7 +64,7 @@ type apiOption struct {
 func optionNode(o apiOption) *xmltree.Node {
 	n := el("option", "id", o.ID)
 	if o.Value != "" {
-		n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: o.Value}}
+		n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: xmlText(o.Value)}}
 	}
 	return n
 }
@@ -101,7 +101,7 @@ func decodeField(m fieldMeta, raw json.RawMessage, reg *registry) (*xmltree.Node
 		if json.Unmarshal(raw, &s) != nil {
 			return rawField(m, raw), nil
 		}
-		add(&xmltree.Node{Kind: xmltree.Text, Text: s})
+		add(&xmltree.Node{Kind: xmltree.Text, Text: xmlText(s)})
 	case cNumber:
 		var f json.Number
 		d := json.NewDecoder(bytes.NewReader(raw))
@@ -166,7 +166,7 @@ func decodeField(m fieldMeta, raw json.RawMessage, reg *registry) (*xmltree.Node
 		}
 		for _, s := range ss {
 			sp := el("sprint", "id", s.ID.String())
-			sp.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: s.Name}}
+			sp.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: xmlText(s.Name)}}
 			add(sp)
 		}
 	default:

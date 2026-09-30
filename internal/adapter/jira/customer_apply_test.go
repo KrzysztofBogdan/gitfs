@@ -154,7 +154,7 @@ func TestCustomerDescribe(t *testing.T) {
 		{adapter.Action{Verb: "create", Target: "comment[1]"}, "reply", "add reply (emails the service desk)"},
 		{adapter.Action{Verb: "update", Target: "approval[id=12]"}, "approve", "answer approval 12"},
 		{adapter.Action{Verb: "update", Group: "status"}, "transition", "transition: Mark as resolved"},
-		{adapter.Action{Verb: "update", Group: "participant"}, "update", "update participants"},
+		{adapter.Action{Verb: "update", Group: "participant"}, "delete", "update participants (may remove people)"},
 		{adapter.Action{Verb: "update", Group: "summary"}, "update", "update summary (not allowed for customers)"},
 	} {
 		a := c.a
@@ -162,5 +162,14 @@ func TestCustomerDescribe(t *testing.T) {
 		if a.Class != c.class || a.Detail != c.detail {
 			t.Errorf("%+v: %s %q", c.a, a.Class, a.Detail)
 		}
+	}
+}
+
+// Participant changes can remove people, so they ask like deletes.
+func TestCustomerParticipantChangeAsks(t *testing.T) {
+	a := adapter.Action{Verb: "update", Group: "participant"}
+	(&CustomerAdapter{}).Describe(&a, &adapter.Resource{Path: "e/x.xml", Root: parse(t, `<request/>`)})
+	if a.Class != "delete" {
+		t.Fatal(a.Class)
 	}
 }

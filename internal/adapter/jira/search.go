@@ -35,7 +35,7 @@ func (s *session) search(ctx context.Context, jql string, fields []string, limit
 			NextPageToken string     `json:"nextPageToken"`
 			IsLast        bool       `json:"isLast"`
 		}
-		if err := s.c.Do(ctx, http.MethodPost, "/rest/api/3/search/jql", req, &resp); err != nil {
+		if err := s.c.DoRead(ctx, http.MethodPost, "/rest/api/3/search/jql", req, &resp); err != nil {
 			return err
 		}
 		for _, is := range resp.Issues {

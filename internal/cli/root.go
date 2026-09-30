@@ -2,9 +2,12 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -54,7 +57,11 @@ func NewRoot() *cobra.Command {
 
 // Execute runs gfs with os.Args and returns the process exit code.
 func Execute() int {
-	err := NewRoot().Execute()
+	// Ctrl-C cancels the context instead of killing the process, so clone and
+	// pull save the index before they exit.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	err := NewRoot().ExecuteContext(ctx)
 	if err != nil {
 		var ee *ExitError
 		if !errors.As(err, &ee) || ee.Err != nil {

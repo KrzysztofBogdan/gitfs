@@ -71,7 +71,7 @@ func (*CustomerAdapter) Describe(a *adapter.Action, local *adapter.Resource) {
 	case a.Verb == "update" && a.Group == "status":
 		a.Class, a.Detail = "transition", "transition: "+textOf(child(root, "status"))
 	case a.Verb == "update" && a.Group == "participant":
-		a.Detail = "update participants"
+		a.Class, a.Detail = "delete", "update participants (may remove people)" // Describe cannot see the base
 	default:
 		a.Detail = a.Verb + " " + a.Group + " (not allowed for customers)"
 	}

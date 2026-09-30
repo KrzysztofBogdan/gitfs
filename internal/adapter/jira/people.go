@@ -126,7 +126,7 @@ func (r *registry) node() *xmltree.Node {
 	for _, p := range ps {
 		n := el("person", "account", p.Account, "type", p.Type, "active", strconv.FormatBool(p.Active), "email", p.Email)
 		if p.Name != "" {
-			n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: p.Name}}
+			n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: xmlText(p.Name)}}
 		}
 		root.Children = append(root.Children, n)
 	}
@@ -191,7 +191,7 @@ func writeFileAtomic(path string, data []byte) error {
 func userNode(name string, u apiUser) *xmltree.Node {
 	n := el(name, "account", u.AccountID)
 	if u.DisplayName != "" {
-		n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: u.DisplayName}}
+		n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: xmlText(u.DisplayName)}}
 	}
 	return n
 }

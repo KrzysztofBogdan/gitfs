@@ -96,16 +96,15 @@ func (s *session) planTransition(ctx context.Context, ic *issueCtx, enc encoder,
 	}
 	plan.tr = &tr
 	plan.trFields = map[string]any{}
+	ids := make([]string, 0, len(tr.Fields))
 	for id := range tr.Fields {
-		if id == "comment" {
-			continue // new comments go through the comment API (jira spec §7.3)
+		if id != "comment" { // new comments go through the comment API (jira spec §7.3)
+			ids = append(ids, id)
 		}
-		if v, changed := plan.put[id]; changed {
-			plan.trFields[id] = v
-			delete(plan.put, id)
-			continue
-		}
-		if !tr.Fields[id].Required {
+	}
+	sort.Strings(ids)
+	for _, id := range ids { // every required field first, so a failure moves nothing
+		if _, changed := plan.put[id]; changed || !tr.Fields[id].Required {
 			continue
 		}
 		v, present, err := s.currentValue(ctx, ic, enc, id, req)
@@ -118,6 +117,12 @@ func (s *session) planTransition(ctx context.Context, ic *issueCtx, enc encoder,
 			return
 		}
 		plan.trFields[id] = v
+	}
+	for _, id := range ids {
+		if v, changed := plan.put[id]; changed {
+			plan.trFields[id] = v
+			delete(plan.put, id)
+		}
 	}
 }
 

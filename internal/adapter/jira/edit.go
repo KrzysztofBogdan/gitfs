@@ -206,7 +206,13 @@ func (s *session) checkEditable(ctx context.Context, ic *issueCtx, plan *editPla
 			if _, withTransition := plan.trFields[id]; withTransition || plan.editable[id] {
 				continue
 			}
+			onScreen := false
+			if plan.tr != nil {
+				_, onScreen = plan.tr.Fields[id]
+			}
 			switch {
+			case onScreen && plan.errs[plan.status] != nil:
+				plan.errs[i] = fmt.Errorf("not sent: it goes with the transition, which failed (%v)", plan.errs[plan.status])
 			case id == "resolution" && plan.tr != nil:
 				plan.errs[i] = fmt.Errorf("<resolution> is on neither the screen of transition %q nor the edit screen", plan.tr.Name)
 			case id == "resolution":
@@ -274,6 +280,9 @@ func (s *session) applyEdit(ctx context.Context, ic *issueCtx, plan *editPlan, o
 			err := errPut
 			if _, withTransition := plan.trFields[id]; withTransition {
 				err = errTr
+				if e := plan.errs[plan.status]; e != nil {
+					err = fmt.Errorf("not sent: it goes with the transition, which failed (%v)", e)
+				}
 			}
 			if err != nil {
 				out[i].Err, out[i].Code = fieldError(err, ids), atlassian.Code(err)

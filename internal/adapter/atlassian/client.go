@@ -148,6 +148,12 @@ func (c *Client) apiError(resp *http.Response) error {
 // after Retry-After. 502/503/504 and network errors are retried only for GET:
 // a write may already have been applied. build makes a fresh request per attempt.
 func (c *Client) send(ctx context.Context, hc *http.Client, build func() (*http.Request, error)) (*http.Response, error) {
+	return c.sendRead(ctx, hc, false, build)
+}
+
+// sendRead is send; read says the request only reads, whatever its method
+// (Jira search is a POST), so transient errors are retried as for GET.
+func (c *Client) sendRead(ctx context.Context, hc *http.Client, read bool, build func() (*http.Request, error)) (*http.Response, error) {
 	var waited time.Duration
 	for attempt := 1; ; attempt++ {
 		req, err := build()
@@ -158,7 +164,11 @@ func (c *Client) send(ctx context.Context, hc *http.Client, build func() (*http.
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		msg, retry := c.retryReason(req.Method, resp, err)
+		method := req.Method
+		if read {
+			method = http.MethodGet
+		}
+		msg, retry := c.retryReason(method, resp, err)
 		if !retry || attempt == MaxAttempts {
 			return resp, err
 		}
@@ -227,6 +237,15 @@ func (c *Client) retryWait(attempt int, resp *http.Response) time.Duration {
 }
 
 func (c *Client) Do(ctx context.Context, method, path string, in, out any) error {
+	return c.do(ctx, false, method, path, in, out)
+}
+
+// DoRead is Do for a request that only reads though its method is not GET.
+func (c *Client) DoRead(ctx context.Context, method, path string, in, out any) error {
+	return c.do(ctx, true, method, path, in, out)
+}
+
+func (c *Client) do(ctx context.Context, read bool, method, path string, in, out any) error {
 	var payload []byte
 	if in != nil {
 		b, err := json.Marshal(in)
@@ -235,7 +254,7 @@ func (c *Client) Do(ctx context.Context, method, path string, in, out any) error
 		}
 		payload = b
 	}
-	resp, err := c.send(ctx, c.hc, func() (*http.Request, error) {
+	resp, err := c.sendRead(ctx, c.hc, read, func() (*http.Request, error) {
 		var body io.Reader
 		if payload != nil {
 			body = bytes.NewReader(payload)

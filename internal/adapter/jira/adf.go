@@ -23,11 +23,36 @@ var markRank = func() map[string]int {
 	return m
 }()
 
+// xmlSafe reports whether every rune of s may appear in XML 1.0.
+func xmlSafe(s string) bool {
+	for _, r := range s {
+		if !(r == 0x9 || r == 0xA || r == 0xD || (r >= 0x20 && r <= 0xD7FF) || (r >= 0xE000 && r <= 0xFFFD) || r >= 0x10000) {
+			return false
+		}
+	}
+	return true
+}
+
+// xmlText replaces what XML 1.0 forbids (ANSI escapes in pasted logs, …)
+// with U+FFFD, so a file always parses. Rich text keeps such runs exactly,
+// as <adf-raw>.
+func xmlText(s string) string {
+	if xmlSafe(s) {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if xmlSafe(string(r)) {
+			return r
+		}
+		return '\uFFFD'
+	}, s)
+}
+
 func el(name string, attrs ...string) *xmltree.Node {
 	n := &xmltree.Node{Kind: xmltree.Element, Name: name}
 	for i := 0; i+1 < len(attrs); i += 2 {
 		if attrs[i+1] != "" {
-			n.SetAttr(attrs[i], attrs[i+1])
+			n.SetAttr(attrs[i], xmlText(attrs[i+1]))
 		}
 	}
 	return n
@@ -36,7 +61,7 @@ func el(name string, attrs ...string) *xmltree.Node {
 func textEl(name, text string) *xmltree.Node {
 	n := el(name)
 	if text != "" {
-		n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: text}}
+		n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: xmlText(text)}}
 	}
 	return n
 }
@@ -183,8 +208,8 @@ func modelled(typ string, m map[string]json.RawMessage) (item, bool, error) {
 	key, _ := json.Marshal(marks)
 	if typ == "text" {
 		var s string
-		if json.Unmarshal(m["text"], &s) != nil || m["attrs"] != nil || m["content"] != nil {
-			return item{}, false, nil
+		if json.Unmarshal(m["text"], &s) != nil || m["attrs"] != nil || m["content"] != nil || !xmlSafe(s) {
+			return item{}, false, nil // text XML cannot hold stays exact as <adf-raw>
 		}
 		return item{text: &s, marks: marks, key: string(key)}, true, nil
 	}
@@ -252,7 +277,7 @@ func attrToXML(owner, name string, raw json.RawMessage) (v string, keep, ok bool
 		return b.String(), true, true
 	case len(t) > 0 && t[0] == '"':
 		var s string
-		if kind != kString || json.Unmarshal(t, &s) != nil {
+		if kind != kString || json.Unmarshal(t, &s) != nil || !xmlSafe(s) {
 			return "", false, false
 		}
 		return s, true, true
