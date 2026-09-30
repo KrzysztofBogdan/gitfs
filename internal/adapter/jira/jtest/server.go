@@ -516,6 +516,13 @@ func (s *Server) issueJSON(is *Issue, want []string, inlineLimit bool) map[strin
 		as = append(as, map[string]any{"id": a.ID, "filename": a.Filename, "mimeType": a.Mime, "size": len(a.Data),
 			"created": a.Created.Format(TimeFormat), "author": s.userJSON(a.Author)})
 	}
+	subtasks := []any{}
+	for _, c := range s.issues {
+		if par, ok := c.Fields["parent"].(map[string]any); ok && par["key"] == is.Key {
+			subtasks = append(subtasks, map[string]any{"id": c.ID, "key": c.Key})
+		}
+	}
+	f["subtasks"] = subtasks
 	cp := page(cs, climit)
 	cp["comments"] = cp["items"]
 	delete(cp, "items")

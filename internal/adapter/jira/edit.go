@@ -223,6 +223,16 @@ func (s *session) checkEditable(ctx context.Context, ic *issueCtx, plan *editPla
 	return nil
 }
 
+// narrowed is an API error restated for some fields; it still unwraps to
+// the API error, so its HTTP status is kept.
+type narrowed struct {
+	msg string
+	err error
+}
+
+func (n *narrowed) Error() string { return n.msg }
+func (n *narrowed) Unwrap() error { return n.err }
+
 // fieldError is err narrowed to the fields of one action, when Jira named
 // the failing fields.
 func fieldError(err error, ids []string) error {
@@ -237,9 +247,9 @@ func fieldError(err error, ids []string) error {
 		}
 	}
 	if len(parts) == 0 {
-		return fmt.Errorf("not sent: another field was refused (%s)", ae.Message())
+		return &narrowed{"not sent: another field was refused (" + ae.Message() + ")", err}
 	}
-	return errors.New(strings.Join(parts, "; "))
+	return &narrowed{strings.Join(parts, "; "), err}
 }
 
 // applyEdit sends plan.put in one PUT, then the transition with its screen
@@ -250,18 +260,8 @@ func (s *session) applyEdit(ctx context.Context, ic *issueCtx, plan *editPlan, o
 		errPut = s.c.Do(ctx, http.MethodPut, "/rest/api/3/issue/"+url.PathEscape(ic.id), map[string]any{"fields": plan.put}, nil)
 	}
 	if plan.tr != nil && plan.errs[plan.status] == nil {
-		body := map[string]any{"transition": map[string]any{"id": plan.tr.ID}}
-		if len(plan.trFields) > 0 {
-			body["fields"] = plan.trFields
-		}
-		errTr = s.c.Do(ctx, http.MethodPost, "/rest/api/3/issue/"+url.PathEscape(ic.id)+"/transitions", body, nil)
-		var ids []string
-		for id := range plan.trFields {
-			ids = append(ids, id)
-		}
-		sort.Strings(ids)
-		if errTr != nil {
-			out[plan.status].Err, out[plan.status].Code = fieldError(errTr, ids), atlassian.Code(errTr)
+		if errTr = s.sendTransition(ctx, ic, plan); errTr != nil {
+			out[plan.status].Err, out[plan.status].Code = errTr, atlassian.Code(errTr)
 		} else {
 			out[plan.status].Detail = fmt.Sprintf("%s -> %s (%s)", plan.from, plan.tr.To.Name, plan.tr.Name)
 		}
@@ -284,4 +284,22 @@ func (s *session) applyEdit(ctx context.Context, ic *issueCtx, plan *editPlan, o
 	for i, e := range plan.errs {
 		out[i].Err = e
 	}
+}
+
+// sendTransition runs plan's transition with its screen fields.
+func (s *session) sendTransition(ctx context.Context, ic *issueCtx, plan *editPlan) error {
+	body := map[string]any{"transition": map[string]any{"id": plan.tr.ID}}
+	if len(plan.trFields) > 0 {
+		body["fields"] = plan.trFields
+	}
+	err := s.c.Do(ctx, http.MethodPost, "/rest/api/3/issue/"+url.PathEscape(ic.id)+"/transitions", body, nil)
+	if err == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(plan.trFields))
+	for id := range plan.trFields {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return fieldError(err, ids)
 }
