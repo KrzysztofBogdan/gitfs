@@ -57,8 +57,9 @@ type Remote struct {
 	Partial      bool             // List returns Full: false
 	FullDirs     []string         // returned as Listing.FullDirs
 	CacheDir     string           // last UseCache argument
-	Stubs        bool             // List returns stubs (no Root); the engine fetches them
-	Missing      map[string]bool  // listed, but Fetch reports not found (deleted after listing)
+	Advice       map[string]adapter.Advice
+	Stubs        bool            // List returns stubs (no Root); the engine fetches them
+	Missing      map[string]bool // listed, but Fetch reports not found (deleted after listing)
 	recs         map[string]*record
 	seq          int
 }
@@ -457,3 +458,7 @@ func (s session) applySub(dst, src *xmltree.Node, a adapter.Action) {
 }
 
 func (s session) UseCache(dir string) { s.r.CacheDir = dir }
+
+func (s session) Available(_ context.Context, id string, _ *adapter.Resource) (adapter.Advice, error) {
+	return s.r.Advice[id], nil
+}
