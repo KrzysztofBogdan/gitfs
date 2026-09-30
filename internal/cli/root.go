@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 
@@ -38,11 +39,26 @@ func exitCode(err error) int {
 	return 2
 }
 
+// Version is set at release time via -ldflags "-X .../internal/cli.Version=...".
+var Version = "dev"
+
+// version falls back to the module version so `go install ...@vX` reports it too.
+func version() string {
+	if Version != "dev" {
+		return Version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return Version
+}
+
 // NewRoot builds the command tree. Subcommands are added by later tasks.
 func NewRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "gfs",
 		Short:         "gfs mirrors a net service as a directory of XML files",
+		Version:       version(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
