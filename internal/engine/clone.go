@@ -26,7 +26,7 @@ func Clone(ctx context.Context, ad adapter.Adapter, sess adapter.Session, rawURL
 	if err != nil {
 		return nil, err
 	}
-	env := &Env{Tree: t, Index: ix, Atts: workdir.NewAttachments(), Adapter: ad, Session: sess, Out: out, Now: time.Now, Progress: progress}
+	env := &Env{Tree: t, Index: ix, Atts: workdir.NewAttachments(), Adapter: ad, Session: sess, Out: out, Now: time.Now, Progress: progress, Batch: true}
 	env.report(adapter.Progress{Phase: "list"})
 	l, err := sess.List(ctx, "")
 	if err != nil {
@@ -52,9 +52,10 @@ func Clone(ctx context.Context, ad adapter.Adapter, sess adapter.Session, rawURL
 	}
 	env.report(adapter.Progress{Phase: "done"})
 	ix.Cursor = l.Cursor
-	if err := t.SaveIndex(ix); err != nil {
+	if err := env.saveIndex(true); err != nil {
 		return nil, err
 	}
+	env.Batch = false
 	fmt.Fprintf(out, "Cloned %d resources from %s into %s\n", n, rawURL, dir)
 	return env, nil
 }

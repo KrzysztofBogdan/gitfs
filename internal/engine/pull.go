@@ -32,8 +32,14 @@ func (r PullReport) ExitCode() int {
 	return 0
 }
 
-func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
-	var r PullReport
+func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
+	e.Batch = true
+	defer func() {
+		e.Batch = false
+		if serr := e.saveIndex(true); err == nil {
+			err = serr
+		}
+	}()
 	s := e.Adapter.Schema()
 	cs, err := changes.Compute(e.Tree, e.Index, e.Adapter, nil)
 	if err != nil {
@@ -254,9 +260,6 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (PullReport, error) {
 	}
 	if !keepCursor {
 		e.Index.Cursor = l.Cursor
-	}
-	if err := e.Tree.SaveIndex(e.Index); err != nil {
-		return r, err
 	}
 	if !printed {
 		fmt.Fprintln(e.Out, "Already up to date.")
