@@ -35,6 +35,7 @@ func newCommit() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&o.DryRun, "dry-run", false, "resolve and check everything, execute nothing")
 	cmd.Flags().StringArrayVar(&allow, "allow", nil, "treat ask as allow for this policy class (repeatable)")
+	cmd.Flags().BoolVar(&o.Force, "force", false, "answer yes to every ask (policy deny still refuses)")
 	cmd.Flags().BoolVar(&o.NoMerge, "no-merge", false, "refuse files whose remote moved instead of merging")
 	return cmd
 }

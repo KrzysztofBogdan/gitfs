@@ -87,3 +87,20 @@ func TestOutsideTree(t *testing.T) {
 		t.Fatalf("%d %s", code, out)
 	}
 }
+
+func TestCommitForce(t *testing.T) {
+	fk.Remote.Put("1", "a/one.xml", `<note><title>One</title></note>`) // TestCLIFlow deletes it
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if out, code := gfs(t, "clone", "fake://x", "wt"); code != 0 {
+		t.Fatal(out)
+	}
+	t.Chdir(filepath.Join(dir, "wt", "a"))
+	os.Remove("one.xml")
+	if out, code := gfs(t, "commit", "--dry-run", "--force"); code != 0 || strings.Contains(out, "[ask]") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	if out, code := gfs(t, "commit", "--force"); code != 0 || !strings.Contains(out, "delete  a/one.xml   ok") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+}

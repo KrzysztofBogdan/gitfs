@@ -9,7 +9,7 @@ const (
 	Deny  = "deny"
 )
 
-var defaults = map[string]string{"send": Ask, "delete": Ask, "publish": Ask, "reply": Ask, "approve": Ask}
+var defaults = map[string]string{"send": Ask, "delete": Ask, "publish": Ask, "reply": Ask, "approve": Ask, "dns": Ask}
 
 type Policy struct{ levels map[string]string }
 
@@ -37,7 +37,13 @@ func (p *Policy) Level(class string) string {
 type Decider struct {
 	Policy  *Policy
 	Allowed map[string]bool            // --allow <class>
+	Force   bool                       // --force: every ask is allowed
 	Prompt  func(question string) bool // nil: not a TTY
+}
+
+// Asks reports whether class needs a confirmation in this run.
+func (d *Decider) Asks(class string) bool {
+	return d.Policy.Level(class) == Ask && !d.Allowed[class] && !d.Force
 }
 
 func (d *Decider) Decide(class, question string) (bool, string) {
@@ -45,11 +51,11 @@ func (d *Decider) Decide(class, question string) (bool, string) {
 	case Deny:
 		return false, "denied by policy"
 	case Ask:
-		if d.Allowed[class] {
+		if !d.Asks(class) {
 			return true, ""
 		}
 		if d.Prompt == nil {
-			return false, "needs confirmation: rerun with --allow " + class
+			return false, "needs confirmation: rerun with --allow " + class + " or --force"
 		}
 		if !d.Prompt(question) {
 			return false, "declined"

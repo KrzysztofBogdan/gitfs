@@ -21,6 +21,7 @@ import (
 type CommitOpts struct {
 	DryRun  bool
 	Allow   map[string]bool
+	Force   bool // every ask counts as allow; deny still refuses
 	NoMerge bool
 	Filter  func(string) bool
 }
@@ -102,7 +103,7 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		}
 		return ci < cj
 	})
-	d := &policy.Decider{Policy: pol, Allowed: o.Allow, Prompt: e.Prompt}
+	d := &policy.Decider{Policy: pol, Allowed: o.Allow, Force: o.Force, Prompt: e.Prompt}
 	var r Report
 	for _, fc := range cs {
 		var err error
@@ -183,7 +184,7 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 		case level == policy.Deny:
 			mark = "[deny]"
 			r.Denied++
-		case level == policy.Ask && !d.Allowed[a.Class]:
+		case d.Asks(a.Class):
 			mark = "[ask]"
 			if d.Prompt == nil {
 				r.Denied++
