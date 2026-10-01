@@ -34,6 +34,19 @@ func prompter() func(string) bool {
 	}
 }
 
+// secretReader reads a secret without echo from the terminal; nil without one.
+func secretReader() func(string) (string, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
+		return nil
+	}
+	return func(prompt string) (string, error) {
+		fmt.Fprint(os.Stdout, prompt)
+		b, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stdout)
+		return strings.TrimSpace(string(b)), err
+	}
+}
+
 // openEnv opens the working tree containing the cwd. Call the returned func when done.
 func openEnv(cmd *cobra.Command, lock bool) (*engine.Env, string, func(), error) {
 	t, err := workdir.Find(".")
@@ -74,7 +87,7 @@ func openEnv(cmd *cobra.Command, lock bool) (*engine.Env, string, func(), error)
 	if r, ok := sess.(adapter.Reporter); ok {
 		r.SetProgress(waitNotice(cmd.ErrOrStderr())) // commit, get, …: retry waits as lines
 	}
-	env := &engine.Env{Tree: t, Index: ix, Atts: atts, Adapter: ad, Session: sess, Out: cmd.OutOrStdout(), Prompt: prompter(), Now: time.Now}
+	env := &engine.Env{Tree: t, Index: ix, Atts: atts, Adapter: ad, Session: sess, Out: cmd.OutOrStdout(), Prompt: prompter(), ReadSecret: secretReader(), Now: time.Now}
 	return env, raw, func() { sess.Close(); unlock() }, nil
 }
 

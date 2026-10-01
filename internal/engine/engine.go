@@ -20,7 +20,10 @@ type Env struct {
 	Session adapter.Session
 	Out     io.Writer
 	Prompt  func(string) bool // nil: not a TTY
-	Now     func() time.Time
+	// ReadSecret reads a secret without echo for Apply (ApplyRequest.Secret);
+	// nil: not a TTY.
+	ReadSecret func(prompt string) (string, error)
+	Now        func() time.Time
 	// Progress, when set, hears the steps of clone and pull, for display.
 	Progress func(adapter.Progress)
 	// Batch defers index saves to every batchSize changes; clone and pull

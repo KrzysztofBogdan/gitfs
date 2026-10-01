@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/schema"
@@ -60,6 +61,10 @@ type Remote struct {
 	CacheDir     string           // last UseCache argument
 	Advice       map[string]adapter.Advice
 	CheckDetail  map[string]string // "verb group" -> Result.Detail from Check
+	Warn         map[string]string // Action.Detail -> Action.Warning set by Describe
+	NeedSecret   bool              // Apply reads a secret for comment creates
+	Secrets      []string          // secrets Apply read
+	VanishOnFail bool              // a failed sub update also removes that sub (a delete whose create failed)
 	Stubs        bool              // List returns stubs (no Root); the engine fetches them
 	Missing      map[string]bool   // listed, but Fetch reports not found (deleted after listing)
 	FetchLimit   int               // Fetch fails after this many calls (0: never)
@@ -216,7 +221,8 @@ func (*Adapter) Verbs() []adapter.Verb {
 	return []adapter.Verb{{Name: "publish", Class: "publish", Help: "publish the note to a channel", Params: []string{"channel"}}}
 }
 
-func (*Adapter) Describe(a *adapter.Action, _ *adapter.Resource) {
+func (ad *Adapter) Describe(a *adapter.Action, _ *adapter.Resource) {
+	defer func() { a.Warning = ad.Remote.Warn[a.Detail] }()
 	a.Class = a.Verb
 	switch {
 	case a.Target != "":
@@ -227,6 +233,20 @@ func (*Adapter) Describe(a *adapter.Action, _ *adapter.Resource) {
 		a.Detail = "move"
 	default:
 		a.Detail = a.Verb + " note"
+	}
+}
+
+// DescribeBase names what a sub delete removes, from the remote's copy.
+func (ad *Adapter) DescribeBase(a *adapter.Action, local, base *adapter.Resource) {
+	ad.Describe(a, local)
+	if m := targetRe.FindStringSubmatch(a.Target); a.Verb == "delete" && m != nil && base != nil {
+		name, id := m[1], m[2]
+		for _, c := range base.Root.ChildrenNamed(name) {
+			if v, _ := c.Attr("id"); v == id {
+				a.Detail += " (" + c.TextContent() + ")"
+			}
+		}
+		a.Warning = ad.Remote.Warn[a.Verb+" "+a.Target]
 	}
 }
 
@@ -317,7 +337,31 @@ func (s session) Apply(_ context.Context, req adapter.ApplyRequest) []adapter.Re
 		if err := s.fault(a); err != nil {
 			res.Err, res.Code = err, "500"
 			out = append(out, res)
+			if s.r.VanishOnFail && a.Verb == "update" && a.Target != "" && rec != nil {
+				out[len(out)-1].Partial = true
+				m := targetRe.FindStringSubmatch(a.Target)
+				name, sid := m[1], m[2]
+				rec.root.Children = slices.DeleteFunc(rec.root.Children, func(c *xmltree.Node) bool {
+					v, _ := c.Attr("id")
+					return c.Kind == xmltree.Element && c.Name == name && v == sid
+				})
+				rec.version++
+			}
 			continue
+		}
+		if s.r.NeedSecret && a.Verb == "create" && strings.HasPrefix(a.Target, "comment[") {
+			if req.Secret == nil {
+				res.Err = errors.New("needs a password: run in a terminal")
+				out = append(out, res)
+				continue
+			}
+			pw, err := req.Secret("Password: ")
+			if err != nil {
+				res.Err = err
+				out = append(out, res)
+				continue
+			}
+			s.r.Secrets = append(s.r.Secrets, pw)
 		}
 		if a.IsAttachment() {
 			s.r.Calls = append(s.r.Calls, a.Verb+" "+a.File)
