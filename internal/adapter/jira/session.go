@@ -40,21 +40,14 @@ func openSession(ctx context.Context, t target) (*session, error) {
 		projects: map[string]*projectMeta{}, meta: &metaCache{Projects: map[string]*projectMeta{}},
 		reg: newRegistry(), report: func(adapter.Progress) {}, now: time.Now}
 	s.c.OnWait = func(msg string) { s.report(adapter.Progress{Phase: "wait", Item: msg}) }
+	s.c.LoginHint = "gfs auth login jira://" + t.host
 	if err := s.resolveProjects(ctx); err != nil {
-		return nil, authHint(err, t)
+		return nil, err
 	}
 	for k, p := range s.projects {
 		s.meta.Projects[k] = p
 	}
 	return s, nil
-}
-
-// authHint says how to fix a token Jira refused (jira spec §10).
-func authHint(err error, t target) error {
-	if atlassian.Code(err) != "401" {
-		return err
-	}
-	return fmt.Errorf("%w; check the token with gfs auth set %s --host %s", err, t.email, t.host)
 }
 
 // resolveProjects turns the selection into projects (jira spec §3.1).

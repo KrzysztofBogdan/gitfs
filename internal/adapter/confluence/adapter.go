@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/atlassian"
 	"github.com/KrzysztofBogdan/gitfs/internal/changes"
 	"github.com/KrzysztofBogdan/gitfs/internal/creds"
 	"github.com/KrzysztofBogdan/gitfs/internal/schema"
@@ -46,6 +47,15 @@ func (*Adapter) DefaultDir(u *url.URL) string {
 		return strings.ToLower(sel.keys[0])
 	}
 	return strings.SplitN(n.Hostname(), ".", 2)[0]
+}
+
+// Login guides the user to an Atlassian API token (DNS spec §8.3).
+func (*Adapter) Login(ctx context.Context, u *url.URL, io adapter.LoginIO) error {
+	n, err := normalize(u)
+	if err != nil {
+		return err
+	}
+	return atlassian.Login(ctx, n.Hostname(), io)
 }
 
 func (*Adapter) Open(ctx context.Context, u *url.URL, cfg map[string]string) (adapter.Session, error) {

@@ -134,3 +134,32 @@ func TestKeyringUnavailable(t *testing.T) {
 		t.Fatalf("set: %v", err)
 	}
 }
+
+// Entries are keyring items named by a remote (ovh:eu, cloudns:sub-1),
+// listed with the identities, value opaque to creds.
+func TestEntries(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.GetEntry("ovh:eu"); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	if err := s.SetEntry("ovh:eu", `{"appKey":"k"}`); err != nil {
+		t.Fatal(err)
+	}
+	s.Set("me@x.com", "tok")
+	if v, err := s.GetEntry("ovh:eu"); err != nil || v != `{"appKey":"k"}` {
+		t.Fatal(v, err)
+	}
+	ids, _, _ := s.Identities()
+	if len(ids) != 2 || ids[0].Email != "me@x.com" || ids[1].Entry != "ovh:eu" || ids[1].Source != "gfs" {
+		t.Fatalf("%+v", ids)
+	}
+	if err := s.DeleteEntry("ovh:eu"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteEntry("ovh:eu"); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	if got := listFile(t, s); got != "atlassian:me@x.com\n" {
+		t.Fatalf("identities file %q", got)
+	}
+}

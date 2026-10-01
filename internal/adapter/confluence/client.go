@@ -22,7 +22,9 @@ type client struct {
 }
 
 func newClient(t target) *client {
-	return &client{Client: atlassian.New(atlassian.Target{Base: t.base, Email: t.email, Token: t.token}, "Confluence"), t: t}
+	c := &client{Client: atlassian.New(atlassian.Target{Base: t.base, Email: t.email, Token: t.token}, "Confluence"), t: t}
+	c.LoginHint = "gfs auth login confluence://" + t.host
+	return c
 }
 
 func (c *client) do(ctx context.Context, method, path string, in, out any) error {

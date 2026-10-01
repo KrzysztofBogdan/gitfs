@@ -307,3 +307,17 @@ func TestDoReadRetriesUnavailable(t *testing.T) {
 		t.Fatalf("%v %v", err, *waits)
 	}
 }
+
+// A 401 says how to get a new token.
+func TestUnauthorizedHint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"errorMessages":["Client must be authenticated"]}`, http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c := New(Target{Base: srv.URL}, "Jira")
+	c.LoginHint = "gfs auth login jira://acme.atlassian.net"
+	err := c.Do(context.Background(), http.MethodGet, "/rest/api/3/myself", nil, nil)
+	if err == nil || err.Error() != "jira: HTTP 401: Client must be authenticated (run gfs auth login jira://acme.atlassian.net)" {
+		t.Fatal(err)
+	}
+}

@@ -30,10 +30,15 @@ type APIError struct {
 	Status  int
 	Body    string
 	Fields  map[string]string // Jira "errors": field id -> message
+	Hint    string            // 401: the command that gets a new token
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("%s: HTTP %d: %s", strings.ToLower(e.Product), e.Status, e.Message())
+	msg := fmt.Sprintf("%s: HTTP %d: %s", strings.ToLower(e.Product), e.Status, e.Message())
+	if e.Status == http.StatusUnauthorized && e.Hint != "" {
+		msg += " (run " + e.Hint + ")"
+	}
+	return msg
 }
 
 // Message is the service's own text: Confluence "message", JSM
@@ -88,8 +93,11 @@ type Client struct {
 	Sleep   func(context.Context, time.Duration) error
 	Now     func() time.Time
 	OnWait  func(msg string) // told before each retry wait; never nil
-	hc      *http.Client     // JSON calls, with a timeout
-	xfer    *http.Client     // attachment bytes: no timeout, the context cancels
+	// LoginHint, e.g. "gfs auth login jira://acme.atlassian.net", is added
+	// to 401 errors.
+	LoginHint string
+	hc        *http.Client // JSON calls, with a timeout
+	xfer      *http.Client // attachment bytes: no timeout, the context cancels
 }
 
 func New(t Target, product string) *Client {
@@ -116,7 +124,7 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body io.Re
 // adapter.ErrLock, both also wrapping the *APIError.
 func (c *Client) apiError(resp *http.Response) error {
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	ae := &APIError{Product: c.Product, Status: resp.StatusCode, Body: string(data)}
+	ae := &APIError{Product: c.Product, Status: resp.StatusCode, Body: string(data), Hint: c.LoginHint}
 	var f struct {
 		Errors map[string]string `json:"errors"`
 	}

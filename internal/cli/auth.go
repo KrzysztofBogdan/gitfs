@@ -11,13 +11,14 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/atlassian"
 	"github.com/KrzysztofBogdan/gitfs/internal/creds"
 )
 
 func newAuth() *cobra.Command {
 	auth := &cobra.Command{Use: "auth", Short: "Manage API tokens stored in the system keyring"}
-	auth.AddCommand(newAuthSet(), newAuthRm(), newAuthClear(), newAuthList())
+	auth.AddCommand(newAuthLogin(), newAuthSet(), newAuthRm(), newAuthClear(), newAuthList())
 	return auth
 }
 
@@ -40,6 +41,95 @@ func readToken(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(line), nil
+}
+
+// loginIO is the terminal for adapter.Loginer: one reader shared by line
+// and secret reads, so piped answers come in order.
+func loginIO(cmd *cobra.Command, flags map[string]string) adapter.LoginIO {
+	in := cmd.InOrStdin()
+	out := cmd.OutOrStdout()
+	br := bufio.NewReader(in)
+	line := func() (string, error) {
+		l, err := br.ReadString('\n')
+		if err != nil && !(errors.Is(err, io.EOF) && l != "") {
+			if errors.Is(err, io.EOF) {
+				return "", errors.New("no answer (end of input)")
+			}
+			return "", err
+		}
+		return strings.TrimSpace(l), nil
+	}
+	f, isFile := in.(*os.File)
+	tty := isFile && term.IsTerminal(int(f.Fd()))
+	return adapter.LoginIO{
+		Out: out,
+		ReadLine: func(prompt string) (string, error) {
+			fmt.Fprint(out, prompt)
+			l, err := line()
+			if !tty {
+				fmt.Fprintln(out)
+			}
+			return l, err
+		},
+		ReadSecret: func(prompt string) (string, error) {
+			fmt.Fprint(out, prompt)
+			if tty {
+				b, err := term.ReadPassword(int(f.Fd()))
+				fmt.Fprintln(out)
+				return strings.TrimSpace(string(b)), err
+			}
+			l, err := line()
+			fmt.Fprintln(out, "(read)")
+			return l, err
+		},
+		OpenURL: func(u string) {
+			if tty {
+				openBrowser(u)
+			}
+		},
+		Flags: flags,
+	}
+}
+
+func newAuthLogin() *cobra.Command {
+	var paste bool
+	var validity, base string
+	cmd := &cobra.Command{
+		Use:   "login <url>",
+		Short: "Guide through getting credentials for a remote and store them",
+		Long: `Explains where to get credentials for the remote, reads them, checks them
+against the service and stores them in the system keyring.
+
+  gfs auth login jira://acme.atlassian.net      API token, stored per email
+  gfs auth login ovh://eu                       OVH consumer key for DNS zones
+  gfs auth login cloudns://sub-1234             ClouDNS API user password`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ad, u, err := adapter.ForURL(args[0])
+			if err != nil {
+				return usage("%v", err)
+			}
+			l, ok := ad.(adapter.Loginer)
+			if !ok {
+				return usage("no guided login for %s; use gfs auth set", ad.Name())
+			}
+			flags := map[string]string{"validity": validity, "base": base}
+			if paste {
+				flags["paste"] = "true"
+			}
+			err = l.Login(cmd.Context(), u, loginIO(cmd, flags))
+			var refused *adapter.LoginRefused
+			if errors.As(err, &refused) {
+				return &ExitError{Code: 1, Err: err}
+			}
+			return err
+		},
+	}
+	cmd.Flags().BoolVar(&paste, "paste", false, "OVH: paste existing application key, secret and consumer key")
+	cmd.Flags().StringVar(&validity, "validity", "", "OVH: how long the consumer key lasts, e.g. 30d (default: unlimited)")
+	cmd.Flags().StringVar(&base, "base", "", "API base URL instead of the real service (tests)")
+	cmd.Flags().MarkHidden("base")
+	return cmd
 }
 
 func newAuthSet() *cobra.Command {
@@ -97,10 +187,22 @@ func newAuthSet() *cobra.Command {
 
 func newAuthRm() *cobra.Command {
 	return &cobra.Command{
-		Use:   "rm <email>",
-		Short: "Delete the stored API token for an email",
+		Use:   "rm <email>|<url>",
+		Short: "Delete the stored API token for an email, or a remote's credentials",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if scheme, host, ok := strings.Cut(args[0], "://"); ok {
+				name := scheme + ":" + strings.ToLower(strings.TrimRight(host, "/"))
+				err := tokenStore().DeleteEntry(name)
+				if errors.Is(err, creds.ErrNotFound) {
+					return &ExitError{Code: 1, Err: fmt.Errorf("no stored credentials for %s", args[0])}
+				}
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "removed: %s\n", name)
+				return nil
+			}
 			email := strings.ToLower(args[0])
 			s := tokenStore()
 			err := s.Delete(email)
@@ -193,17 +295,23 @@ func newAuthList() *cobra.Command {
 				fmt.Fprintln(out, "no stored tokens")
 				return nil
 			}
+			label := func(id creds.Identity) string {
+				if id.Entry != "" {
+					return id.Entry
+				}
+				return creds.Realm + ":" + id.Email
+			}
 			width := 0
 			for _, id := range ids {
-				width = max(width, len(creds.Realm)+1+len(id.Email))
+				width = max(width, len(label(id)))
 			}
 			for _, id := range ids {
 				src := id.Source
 				if id.Missing {
 					src += " (missing)"
 				}
-				line := fmt.Sprintf("%-*s  %-14s", width, creds.Realm+":"+id.Email, src)
-				if hosts := g.HostsFor(id.Email); len(hosts) > 0 {
+				line := fmt.Sprintf("%-*s  %-14s", width, label(id), src)
+				if hosts := g.HostsFor(id.Email); id.Email != "" && len(hosts) > 0 {
 					line += " default for " + strings.Join(hosts, ", ")
 				}
 				fmt.Fprintln(out, strings.TrimRight(line, " "))

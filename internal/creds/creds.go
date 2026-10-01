@@ -41,7 +41,8 @@ func DefaultDirs() Dirs {
 type Store struct{ Dirs Dirs }
 
 type Identity struct {
-	Email   string
+	Email   string // an Atlassian identity; "" for an entry
+	Entry   string // a remote's entry (ovh:eu, cloudns:sub-1); "" for an identity
 	Source  string // "gfs" or "alogin"
 	Missing bool   // listed by gfs, but the keyring entry is gone
 }
@@ -129,6 +130,51 @@ func (s Store) Delete(email string) error {
 	return s.writeList(slices.DeleteFunc(keys, func(x string) bool { return x == k }))
 }
 
+// GetEntry returns the value stored under name, a remote's entry such as
+// "ovh:eu" (DNS spec §3.1); ErrNotFound when there is none.
+func (s Store) GetEntry(name string) (string, error) {
+	v, err := keyring.Get(service, name)
+	if errors.Is(err, keyring.ErrNotFound) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", unavailable(err)
+	}
+	return v, nil
+}
+
+// SetEntry stores or replaces the value under name.
+func (s Store) SetEntry(name, value string) error {
+	if value == "" {
+		return errors.New("empty value")
+	}
+	if err := keyring.Set(service, name, value); err != nil {
+		return unavailable(err)
+	}
+	keys, err := s.readList()
+	if err != nil {
+		return err
+	}
+	return s.writeList(append(keys, name))
+}
+
+// DeleteEntry removes the entry name; ErrNotFound when gfs never stored it.
+func (s Store) DeleteEntry(name string) error {
+	keys, err := s.readList()
+	if err != nil {
+		return err
+	}
+	if err := keyring.Delete(service, name); err != nil {
+		if !errors.Is(err, keyring.ErrNotFound) {
+			return unavailable(err)
+		}
+		if !slices.Contains(keys, name) {
+			return ErrNotFound
+		}
+	}
+	return s.writeList(slices.DeleteFunc(keys, func(x string) bool { return x == name }))
+}
+
 // Clear deletes every gfs entry and returns how many identities were listed.
 func (s Store) Clear() (int, error) {
 	keys, err := s.readList()
@@ -143,7 +189,7 @@ func (s Store) Clear() (int, error) {
 	return len(keys), s.writeList(nil)
 }
 
-// Identities lists gfs's identities, then alogin-only ones. The warnings
+// Identities lists gfs's identities, then alogin-only ones, then entries. The warnings
 // report an unreadable ~/.alogin.json.
 func (s Store) Identities() ([]Identity, []string, error) {
 	keys, err := s.readList()
@@ -152,14 +198,16 @@ func (s Store) Identities() ([]Identity, []string, error) {
 	}
 	var ids []Identity
 	seen := map[string]bool{}
+	var entries []Identity
 	for _, k := range keys {
-		email, ok := strings.CutPrefix(k, Realm+":")
-		if !ok {
-			continue
-		}
 		_, gerr := keyring.Get(service, k)
 		if gerr != nil && !errors.Is(gerr, keyring.ErrNotFound) {
 			return nil, nil, unavailable(gerr)
+		}
+		email, ok := strings.CutPrefix(k, Realm+":")
+		if !ok {
+			entries = append(entries, Identity{Entry: k, Source: "gfs", Missing: gerr != nil})
+			continue
 		}
 		ids = append(ids, Identity{Email: email, Source: "gfs", Missing: gerr != nil})
 		seen[email] = true
@@ -180,5 +228,5 @@ func (s Store) Identities() ([]Identity, []string, error) {
 	for _, e := range extra {
 		ids = append(ids, Identity{Email: e, Source: "alogin"})
 	}
-	return ids, warnings, nil
+	return append(ids, entries...), warnings, nil
 }

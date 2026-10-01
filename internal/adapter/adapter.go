@@ -190,3 +190,25 @@ type AvailableField struct {
 	Required bool
 	Allowed  []string // shown when there are at most 8
 }
+
+// Loginer is implemented by adapters that guide the user to credentials for
+// a remote and store them (gfs auth login, DNS spec §8).
+type Loginer interface {
+	Login(ctx context.Context, u *url.URL, io LoginIO) error
+}
+
+// LoginIO is the terminal a Loginer talks through.
+type LoginIO struct {
+	Out        io.Writer
+	ReadLine   func(prompt string) (string, error) // prompt printed, answer trimmed
+	ReadSecret func(prompt string) (string, error) // not echoed on a terminal
+	OpenURL    func(u string)                      // best effort; no-op without a terminal
+	Flags      map[string]string                   // paste, validity, base (tests)
+}
+
+// LoginRefused is a Login the service refused (bad credentials, approval
+// not given): gfs exits 1, not 2.
+type LoginRefused struct{ Err error }
+
+func (e *LoginRefused) Error() string { return e.Err.Error() }
+func (e *LoginRefused) Unwrap() error { return e.Err }
