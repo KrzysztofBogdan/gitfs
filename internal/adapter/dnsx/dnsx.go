@@ -138,3 +138,21 @@ func Less(a, b *xmltree.Node) bool {
 	}
 	return ai < bi
 }
+
+func xmlChar(r rune) bool {
+	return r == 0x9 || r == 0xA || r == 0xD || (r >= 0x20 && r <= 0xD7FF) || (r >= 0xE000 && r <= 0xFFFD) || (r >= 0x10000 && r <= 0x10FFFF)
+}
+
+// XMLText replaces characters XML cannot hold with U+FFFD.
+func XMLText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if xmlChar(r) {
+			return r
+		}
+		return '�'
+	}, s)
+}
+
+// Lossy reports whether a value went through XMLText's replacement: such a
+// value cannot be written back as it was.
+func Lossy(s string) bool { return strings.ContainsRune(s, '�') }

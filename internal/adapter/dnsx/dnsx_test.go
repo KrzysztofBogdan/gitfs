@@ -80,3 +80,19 @@ func TestLess(t *testing.T) {
 		t.Fatal(strings.Join(got, "|"))
 	}
 }
+
+// Characters XML cannot hold become U+FFFD, so the file stays parseable;
+// Lossy says so, and the adapters refuse to write such a value back.
+func TestXMLText(t *testing.T) {
+	if XMLText("v=spf1 -all") != "v=spf1 -all" || XMLText("a\x01b") != "a�b" || XMLText("tab\tok") != "tab\tok" {
+		t.Fatal(XMLText("a\x01b"))
+	}
+	if Lossy("a�b") == false || Lossy("ab") {
+		t.Fatal("Lossy")
+	}
+	n := &xmltree.Node{Kind: xmltree.Element, Name: "record"}
+	n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: XMLText("x\x00y")}}
+	if _, err := xmltree.ParseString(xmltree.Print(n, 0)); err != nil {
+		t.Fatal(err)
+	}
+}
