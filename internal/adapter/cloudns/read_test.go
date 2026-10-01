@@ -58,11 +58,12 @@ func TestReadZone(t *testing.T) {
 	for id := range srv.Zone("qa1.pl").MailForwards {
 		mf = id
 	}
-	want := `<zone name="qa1.pl" type="master" kind="geodns" active="true">
+	want := `<zone name="qa1.pl" type="master" kind="geodns">
   <soa primary="gns1.cloudns.net" admin="support@cloudns.net" refresh="7200" retry="1800" expire="1209600" ttl="3600" serial="2026092810"/>
   <dnssec status="enabled">
     <ds key-tag="12626" algorithm="13" digest-type="2">B156B918CC62</ds>
   </dnssec>
+  <active>true</active>
   <record id="15" name="@" type="CAA" ttl="3600" caa-flag="0" caa-type="issue">letsencrypt.org</record>
   <record id="11" name="@" type="MX" ttl="3600" priority="10">mxa.eu.mailgun.org</record>
   <record id="499153689" name="@" type="NS" ttl="3600">gns1.cloudns.net</record>

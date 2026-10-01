@@ -180,7 +180,7 @@ func (s *session) readZone(ctx context.Context, z string) (*xmltree.Node, error)
 	if info.Status == "1" {
 		active = "true"
 	}
-	root := el("zone", "name", z, "type", info.Type, "kind", info.Zone, "active", active)
+	root := el("zone", "name", z, "type", info.Type, "kind", info.Zone)
 	var soa map[string]flex
 	if err := s.c.Do(ctx, "soa-details", url.Values{"domain-name": {z}}, &soa); err != nil {
 		return nil, wrap(err)
@@ -215,6 +215,7 @@ func (s *session) readZone(ctx context.Context, z string) (*xmltree.Node, error)
 		}
 		root.Children = append(root.Children, d)
 	}
+	root.Children = append(root.Children, withText(el("active"), active))
 	recs, err := s.records(ctx, z)
 	if err != nil {
 		return nil, wrap(err)

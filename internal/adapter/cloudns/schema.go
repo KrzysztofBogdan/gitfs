@@ -11,14 +11,14 @@ import (
 // the adapter compares the set as a whole (a new failover carries its
 // record's id, so it cannot be a sub-resource).
 var zoneSchema = &schema.Schema{
-	Root: "zone",
-	RootAttrs: []schema.Attr{{Name: "name", ReadOnly: true}, {Name: "type", ReadOnly: true}, {Name: "kind", ReadOnly: true},
-		{Name: "active"}},
-	ID: "name",
+	Root:      "zone",
+	RootAttrs: []schema.Attr{{Name: "name", ReadOnly: true}, {Name: "type", ReadOnly: true}, {Name: "kind", ReadOnly: true}},
+	ID:        "name",
 	Elems: []schema.Elem{
 		{Name: "soa", Kind: schema.Field, Attrs: []schema.Attr{{Name: "primary"}, {Name: "admin"}, {Name: "refresh"}, {Name: "retry"},
 			{Name: "expire"}, {Name: "ttl"}, {Name: "serial", ReadOnly: true}}},
 		{Name: "dnssec", Kind: schema.Field, Attrs: []schema.Attr{{Name: "status"}}},
+		{Name: "active", Kind: schema.Field}, // an element, not a root attribute: root attributes make no actions
 		{Name: "record", Kind: schema.Sub, ID: "id", Less: dnsx.Less,
 			Attrs: []schema.Attr{{Name: "id", ReadOnly: true}, {Name: "name"}, {Name: "type"}, {Name: "ttl"}, {Name: "geo"},
 				{Name: "status"}, {Name: "priority"}, {Name: "weight"}, {Name: "port"}}},
