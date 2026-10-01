@@ -171,16 +171,15 @@ Common rules:
     <ds key-tag="12626" algorithm="13" digest-type="2">B156B918…CC62</ds>
   </dnssec>
   <record id="11" name="@"   type="MX" ttl="3600" priority="10">mx1.example.com</record>
-  <record id="12" name="api" type="A"  ttl="60" geo="EUR">203.0.113.20
-    <failover check="http" host="api.example.com" path="/health" region="eu" period="60">
-      <backup>198.51.100.7</backup>
-    </failover>
-  </record>
+  <record id="12" name="api" type="A"  ttl="60" geo="EUR">203.0.113.20</record>
   <record id="14" name="api" type="A"  ttl="60">192.0.2.1</record>
   <record id="15" name="_sip._tcp" type="SRV" ttl="3600" priority="0" weight="5" port="5060">sip.example.com</record>
   <record id="20" name="go"  type="WR" ttl="3600" redirect-type="301">https://example.com/landing</record>
   <record id="21" name="@"   type="CAA" ttl="3600" caa-flag="0" caa-type="issue">letsencrypt.org</record>
   <record id="22" name="old" type="A"  ttl="3600" status="0">192.0.2.9</record>
+  <failover record="12" check="http" host="api.example.com" path="/health" region="eu" period="60">
+    <backup>198.51.100.7</backup>
+  </failover>
   <mail-forward id="7" box="info" destination="me@gmail.com"/>
 </zone>
 ```
@@ -216,9 +215,14 @@ Common rules:
   is the default location (`DEFAULT`, id 1). Allowed on A, AAAA, CNAME,
   NAPTR, SRV, and only in GeoDNS zones; ALIAS records in GeoDNS zones
   carry a location too.
-- `<failover>` inside the record it watches: check type and its
-  parameters, monitoring region, period, notification settings, up/down
-  handlers, `<backup>` IPs (1–5) in order *(spike: names)*.
+- `<failover record="<id>">`, a sibling of the records (a record holding
+  both a value and a nested element would print as one mixed-content
+  line): check type and its parameters, monitoring region, period,
+  notification settings, up/down handlers, `<backup>` IPs (1–5) in order
+  *(spike: names)*. `record` is the watched record's id, so failover can
+  only be added to a record that already exists: a new record is
+  committed first, failover added after (Check refuses a `record` that
+  is not an existing record id of the file).
 - `<mail-forward>`: `box`, `host` (omitted for the apex), `destination`.
 - `<soa>`: `soa-details` → `primaryNS` → `primary`, `adminMail` →
   `admin`, `refresh`, `retry`, `expire`, `defaultTTL` → `ttl` (editable
@@ -273,7 +277,7 @@ fragments per record type.
   conflict (`C`), resolved with `gfs resolve`.
 - Changing `zones=`/`exclude=` and pulling adds or removes zone files.
 - Merge is per element by id (`record`, `redirect`, `dynhost`,
-  `mail-forward`, `dynhost-login` by `login`); `soa`, `dnssec` and zone
+  `mail-forward`, `failover` by `record`, `dynhost-login` by `login`); `soa`, `dnssec` and zone
   attributes merge as single elements. A remote change to an element the
   user also changed is the only conflict.
 - Clone writes each zone as soon as it is read and saves the index on
