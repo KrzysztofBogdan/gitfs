@@ -165,11 +165,12 @@ Common rules:
 ### 5.2 ClouDNS
 
 ```xml
-<zone name="example.com" type="master" kind="geodns" active="true">
+<zone name="example.com" type="master" kind="geodns">
   <soa primary="gns1.cloudns.net" admin="support@cloudns.net" refresh="7200" retry="1800" expire="1209600" ttl="3600" serial="2026092802"/>
   <dnssec status="enabled">
     <ds key-tag="12626" algorithm="13" digest-type="2">B156B918…CC62</ds>
   </dnssec>
+  <active>true</active>
   <record id="11" name="@"   type="MX" ttl="3600" priority="10">mx1.example.com</record>
   <record id="12" name="api" type="A"  ttl="60" geo="EUR">203.0.113.20</record>
   <record id="14" name="api" type="A"  ttl="60">192.0.2.1</record>
@@ -185,8 +186,9 @@ Common rules:
 ```
 
 - Zone attributes: `type` (`master`, `parked`, … read-only), `kind`
-  (`domain` / `geodns`, read-only, from `list-zones` `zone`), `active`
-  (`status` `"1"`).
+  (`domain` / `geodns`, read-only, from `list-zones` `zone`).
+- `<active>true|false</active>` (`status` `"1"`): an element, because
+  root attributes make no actions in the engine.
 - Record types and allowed TTLs are read from the API
   (`get-available-record-types`, `get-available-ttl`) and cached; the
   qa1.pl account allows 60, 300, 600, 900, 1800, 3600, 21600, 43200,
@@ -263,12 +265,14 @@ fragments per record type.
 2. Per zone, records part: when `serial` differs from the indexed one
    (or `--full`): `records.json` paged (100 rows; `get-records-count`
    says how many), `soa-details.json`, `get-dnssec-ds-records.json`.
-3. Per zone, every pull (they do not move the serial): `mail-forwards`,
-   and `failover-settings` for each record whose list entry has
-   `failover` `"1"`.
-4. Version = serial plus a hash of the step 3 answers; unchanged → file
-   untouched.
-5. `.geodns.xml` from `get-geodns-locations.json`.
+3. Per zone, every pull: `mail-forwards` (forwards do not move the
+   serial). Version = serial plus a hash of that answer; unchanged → file
+   untouched. Failover settings are read with the records (step 2,
+   `failover-settings` for each record whose list entry has `failover`
+   `"1"`); knowing which records have failover needs the record list, so
+   a change to failover alone shows up with the zone's next change or on
+   `pull --full`.
+4. `.geodns.xml` from `get-geodns-locations.json`.
 
 ### 6.3 Both
 
@@ -302,7 +306,7 @@ fragments per record type.
 | `dynhost-login` | `/dynHost/login` POST (password asked) / PUT / DELETE | — |
 | `failover` | — | `failover-activate` / `failover-modify` / `failover-deactivate` |
 | `mail-forward` | — | `add-mail-forward` / `modify-mail-forward` / `delete-mail-forward` |
-| zone `active` | — | `change-status` |
+| `<active>` | — | `change-status` |
 | read-only attributes, `.geodns.xml` | refused | refused |
 
 ClouDNS `mod-record` takes the full record: gfs sends every attribute
@@ -379,13 +383,15 @@ echo), open a URL in the browser (best effort) and the keyring store.
    `GET /domain/zone`, `GET|POST|PUT|DELETE /domain/zone/*`; print the
    rules and the `validationUrl`, try to open it.
 3. Poll `GET /auth/currentCredential` with the pending consumer key every
-   3 s until `validated`, for at most 10 minutes (Ctrl-C stops).
+   3 s until `validated` (`refused` or `expired` stop with nothing
+   stored), for at most 10 minutes (Ctrl-C stops).
 4. Verify with `GET /domain/zone` (the rules do not reach `/me`); print
    the zone count, store.
 
-Flags: `--validity 30d` (default unlimited), `--paste` (read all three
-keys, verify, read the key's rules from `/auth/currentCredential` and
-warn when they reach beyond `/domain/zone`, e.g. `/*`). Re-running with
+How long the key lasts is chosen on OVH's approval page (the API has
+no parameter for it); the guide says so. `--paste` reads all three keys,
+verifies them, reads the key's rules from `/auth/currentCredential` and
+warns when they reach beyond `/domain/zone`, e.g. `/*`. Re-running with
 an application already stored reuses it and asks only for a new
 consumer key.
 
@@ -471,10 +477,14 @@ ClouDNS: qa1.pl, every endpoint of §6.2. Findings are folded into §5–§7:
 OVH `lastUpdate` is stale (version from `export`), redirects and DynHost
 own records with the same id, OVH SOA has no `retry`; ClouDNS gives a
 zone serial, DS records, its TTL and type lists, and a location tree.
-Still open (answered by the real-site write checks on a scratch zone):
-failover field names, the list API's shape for SRV/CAA/TLSA/WR/…
-parameters, whether ClouDNS's serial moves for every record edit, and
-the ClouDNS rate-limit answer text.
+Real-site checks (2026-10-01): every OVH zone (20) and the ClouDNS zone
+round-trip unchanged. On qa1.pl (ClouDNS, backup first) a record was
+created with a GeoDNS location, edited, retyped and deleted; adding a
+record moves the zone serial; `get-geodns-locations` needs a
+`domain-name` (a GeoDNS zone). Still open: failover field names and mail
+forwards (the plan allows 0 of each: "You've reached your Failover checks
+limit of 0"), the list API's shape for SRV/CAA/TLSA/WR parameters, the
+ClouDNS rate-limit text, and OVH writes (the stored key is read-only).
 
 ## 11. Docs
 
