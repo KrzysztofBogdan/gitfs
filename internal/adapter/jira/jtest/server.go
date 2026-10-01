@@ -18,8 +18,10 @@ import (
 const TimeFormat = "2006-01-02T15:04:05.000-0700"
 
 type Project struct {
-	ID, Key string
-	Type    string // "software" (default), "service_desk", "business"
+	ID, Key  string
+	Type     string // "software" (default), "service_desk", "business"
+	NoBrowse bool   // listed by project search, but not with action=browse
+	NoCreate bool   // createmeta answers 404, as for a read-only account
 }
 
 type IssueType struct {
@@ -143,6 +145,8 @@ func New() *Server {
 	mux.HandleFunc("GET /rest/api/3/workflowscheme/project", s.workflowScheme)
 	mux.HandleFunc("GET /rest/api/3/workflow/search", s.workflowSearch)
 	mux.HandleFunc("GET /rest/api/3/project/{key}/statuses", s.projectStatuses)
+	mux.HandleFunc("GET /rest/api/3/project/{key}", s.getProject)
+	mux.HandleFunc("GET /rest/api/3/field", s.allFields)
 	mux.HandleFunc("GET /rest/api/3/status", s.allStatuses)
 	mux.HandleFunc("GET /rest/api/3/attachment/content/{id}", s.attachmentContent)
 	for _, register := range registrars { // write endpoints, one file per kind
@@ -580,7 +584,10 @@ func (s *Server) projectSearch(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	keys := make([]string, 0, len(s.projects))
-	for k := range s.projects {
+	for k, p := range s.projects {
+		if p.NoBrowse && r.URL.Query().Get("action") == "browse" {
+			continue
+		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
@@ -601,6 +608,10 @@ func (s *Server) createmetaTypes(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, 404, "no project "+r.PathValue("p"), nil)
 		return
 	}
+	if s.projects[r.PathValue("p")].NoCreate {
+		jiraError(w, 404, "You cannot create issues in this project.", nil)
+		return
+	}
 	start, max := startMax(r, 50)
 	var vals []any
 	for _, t := range window(ts, start, max) {
@@ -618,6 +629,50 @@ func fieldJSON(f Field) map[string]any {
 		sch["custom"] = f.Custom
 	}
 	return map[string]any{"fieldId": f.ID, "key": f.ID, "name": f.Name, "required": f.Required, "schema": sch}
+}
+
+func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.projects[r.PathValue("key")]
+	if p == nil {
+		jiraError(w, 404, "No project could be found with key '"+r.PathValue("key")+"'.", nil)
+		return
+	}
+	var types []any
+	for _, t := range s.types[p.Key] {
+		types = append(types, map[string]any{"id": t.ID, "name": t.Name, "subtask": t.Subtask})
+	}
+	writeJSON(w, map[string]any{"id": p.ID, "key": p.Key, "projectTypeKey": p.Type, "issueTypes": types})
+}
+
+// allFields is GET /field: every field on any create screen, once, as Jira
+// lists the site's fields (id, name, schema).
+func (s *Server) allFields(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys := make([]string, 0, len(s.fields))
+	for k := range s.fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	seen := map[string]bool{}
+	vals := []any{}
+	for _, k := range keys {
+		for _, f := range s.fields[k] {
+			if seen[f.ID] {
+				continue
+			}
+			seen[f.ID] = true
+			j := fieldJSON(f)
+			j["id"] = f.ID
+			j["custom"] = f.Custom != ""
+			delete(j, "fieldId")
+			delete(j, "required")
+			vals = append(vals, j)
+		}
+	}
+	writeJSON(w, vals)
 }
 
 func (s *Server) createmetaFields(w http.ResponseWriter, r *http.Request) {

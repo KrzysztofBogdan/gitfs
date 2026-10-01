@@ -367,3 +367,40 @@ func TestCursorCodec(t *testing.T) {
 		t.Fatal(m)
 	}
 }
+
+// A project the account can see listed but not browse holds no issues it
+// could read: it is left out instead of failing the clone.
+func TestListSkipsUnbrowsableProjects(t *testing.T) {
+	srv, now := site(t)
+	srv.AddProject(jtest.Project{Key: "PM", NoBrowse: true, NoCreate: true}, jtest.IssueType{ID: "9", Name: "Task"})
+	s := open(t, srv, now, selection{}, "")
+	l, err := s.List(bg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.projects["PM"] != nil {
+		t.Fatalf("PM selected: %v", paths(l))
+	}
+}
+
+// A project the account can browse but not create in has no create screen:
+// its issues still list, with the site's fields.
+func TestListReadOnlyProject(t *testing.T) {
+	srv, now := site(t)
+	srv.AddProject(jtest.Project{Key: "RO", NoCreate: true}, jtest.IssueType{ID: "1", Name: "Task"})
+	srv.AddIssue(jtest.Issue{Project: "RO", Type: "1", Summary: "Read only", Reporter: "me",
+		Created: now.Add(-time.Hour), Updated: now.Add(-time.Hour),
+		Fields: map[string]any{"customfield_10050": map[string]any{"id": "7", "value": "Platform"},
+			"description": json.RawMessage(doc(`{"type":"paragraph","content":[{"type":"text","text":"Read me"}]}`))}})
+	s := open(t, srv, now, selection{}, "")
+	l, err := s.List(bg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ro := xmltree.Print(find(t, l, "ro/RO-1 Read only.xml").Root, 0)
+	for _, part := range []string{`<paragraph>Read me</paragraph>`, `<option id="7">Platform</option>`} {
+		if !strings.Contains(ro, part) {
+			t.Errorf("RO-1 lacks %s:\n%s", part, ro)
+		}
+	}
+}

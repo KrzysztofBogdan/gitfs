@@ -20,19 +20,20 @@ import (
 
 // session is agent mode: every selected project of a site (jira spec §6, §7).
 type session struct {
-	c         *atlassian.Client
-	t         target
-	projects  map[string]*projectMeta // selected, by key
-	meta      *metaCache              // every cached project; the selected ones share pointers
-	reg       *registry
-	wf        *xmltree.Node // .workflows.xml once built or loaded
-	wfStale   bool          // metadata changed since wf was built
-	wfDirty   bool          // wf changed since load
-	metaDirty bool
-	cacheDir  string // <tree>/.gfs/cache/jira; "" without a tree
-	report    func(adapter.Progress)
-	now       func() time.Time
-	linkTypes []linkType // issue link types, read on first use (subs.go)
+	c          *atlassian.Client
+	t          target
+	projects   map[string]*projectMeta // selected, by key
+	meta       *metaCache              // every cached project; the selected ones share pointers
+	reg        *registry
+	wf         *xmltree.Node // .workflows.xml once built or loaded
+	wfStale    bool          // metadata changed since wf was built
+	wfDirty    bool          // wf changed since load
+	metaDirty  bool
+	cacheDir   string               // <tree>/.gfs/cache/jira; "" without a tree
+	siteFields map[string]fieldMeta // GET /field, read once for projects without a create screen
+	report     func(adapter.Progress)
+	now        func() time.Time
+	linkTypes  []linkType // issue link types, read on first use (subs.go)
 }
 
 func openSession(ctx context.Context, t target) (*session, error) {
@@ -75,7 +76,7 @@ func (s *session) resolveProjects(ctx context.Context) error {
 			} `json:"values"`
 			IsLast bool `json:"isLast"`
 		}
-		if err := s.c.Do(ctx, http.MethodGet, fmt.Sprintf("/rest/api/3/project/search?startAt=%d&maxResults=50", start), nil, &resp); err != nil {
+		if err := s.c.Do(ctx, http.MethodGet, fmt.Sprintf("/rest/api/3/project/search?action=browse&startAt=%d&maxResults=50", start), nil, &resp); err != nil {
 			return err
 		}
 		for _, v := range resp.Values {
@@ -170,7 +171,11 @@ func (s *session) loadTypes(ctx context.Context, p *projectMeta) error {
 			Total int `json:"total"`
 		}
 		path := fmt.Sprintf("/rest/api/3/issue/createmeta/%s/issuetypes?startAt=%d&maxResults=50", url.PathEscape(p.Key), start)
-		if err := s.c.Do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		err := s.c.Do(ctx, http.MethodGet, path, nil, &resp)
+		if start == 0 && errors.Is(err, adapter.ErrNotFound) { // "You cannot create issues in this project."
+			return s.loadTypesReadOnly(ctx, p)
+		}
+		if err != nil {
 			return fmt.Errorf("issue types of %s: %w", p.Key, err)
 		}
 		for _, it := range resp.IssueTypes {
@@ -184,6 +189,42 @@ func (s *session) loadTypes(ctx context.Context, p *projectMeta) error {
 		if len(resp.IssueTypes) == 0 || start >= resp.Total {
 			break
 		}
+	}
+	p.Types = types
+	s.metaDirty, s.wfStale = true, true
+	return nil
+}
+
+// loadTypesReadOnly is loadTypes for a project the account cannot create
+// in: without a create screen, every type shows the site's fields.
+func (s *session) loadTypesReadOnly(ctx context.Context, p *projectMeta) error {
+	var proj struct {
+		IssueTypes []struct {
+			ID, Name string
+			Subtask  bool
+		} `json:"issueTypes"`
+	}
+	if err := s.c.Do(ctx, http.MethodGet, "/rest/api/3/project/"+url.PathEscape(p.Key), nil, &proj); err != nil {
+		return fmt.Errorf("issue types of %s: %w", p.Key, err)
+	}
+	if s.siteFields == nil {
+		var fs []struct {
+			ID, Name string
+			Schema   *struct{ Type, Items, Custom string }
+		}
+		if err := s.c.Do(ctx, http.MethodGet, "/rest/api/3/field", nil, &fs); err != nil {
+			return fmt.Errorf("fields of %s: %w", p.Key, err)
+		}
+		s.siteFields = map[string]fieldMeta{}
+		for _, f := range fs {
+			if f.Schema != nil { // no schema: not an issue field (e.g. "thumbnail")
+				s.siteFields[f.ID] = fieldMeta{ID: f.ID, Name: f.Name, Type: f.Schema.Type, Items: f.Schema.Items, Custom: f.Schema.Custom}
+			}
+		}
+	}
+	types := map[string]*typeMeta{}
+	for _, it := range proj.IssueTypes {
+		types[it.ID] = &typeMeta{ID: it.ID, Name: it.Name, Subtask: it.Subtask, Fields: s.siteFields}
 	}
 	p.Types = types
 	s.metaDirty, s.wfStale = true, true

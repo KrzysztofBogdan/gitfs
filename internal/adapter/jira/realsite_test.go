@@ -178,7 +178,11 @@ func scratchIssue(t *testing.T, s *session, key, summary string) (id, issueKey s
 	if err := s.c.Do(bg, http.MethodPost, "/rest/api/3/issue", body, &resp); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.c.Do(bg, http.MethodDelete, "/rest/api/3/issue/"+resp.ID, nil, nil) })
+	t.Cleanup(func() {
+		if err := s.c.Do(bg, http.MethodDelete, "/rest/api/3/issue/"+resp.ID, nil, nil); err != nil {
+			t.Errorf("deleting scratch issue %s (delete it by hand; the account may lack Delete Issues): %v", resp.Key, err)
+		}
+	})
 	return resp.ID, resp.Key
 }
 
@@ -233,6 +237,42 @@ func TestRealWrites(t *testing.T) {
 	}
 }
 
+// scratchRequest creates a request (an issue with a request type, so the
+// service desk API sees it) and deletes it when the test ends.
+func scratchRequest(t *testing.T, s *session, key, summary string) (id, issueKey string) {
+	t.Helper()
+	var desks struct {
+		Values []struct{ ID, ProjectKey string }
+	}
+	if err := s.c.Do(bg, http.MethodGet, "/rest/servicedeskapi/servicedesk", nil, &desks); err != nil {
+		t.Fatal(err)
+	}
+	var desk string
+	for _, d := range desks.Values {
+		if d.ProjectKey == key {
+			desk = d.ID
+		}
+	}
+	if desk == "" {
+		t.Fatalf("%s is not a service project", key)
+	}
+	var types struct{ Values []struct{ ID string } }
+	if err := s.c.Do(bg, http.MethodGet, "/rest/servicedeskapi/servicedesk/"+desk+"/requesttype", nil, &types); err != nil || len(types.Values) == 0 {
+		t.Fatalf("request types of %s: %v", key, err)
+	}
+	var resp struct{ IssueID, IssueKey string }
+	body := map[string]any{"serviceDeskId": desk, "requestTypeId": types.Values[0].ID, "requestFieldValues": map[string]any{"summary": summary, "description": "gfs check"}}
+	if err := s.c.Do(bg, http.MethodPost, "/rest/servicedeskapi/request", body, &resp); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := s.c.Do(bg, http.MethodDelete, "/rest/api/3/issue/"+resp.IssueID, nil, nil); err != nil {
+			t.Errorf("deleting scratch request %s (delete it by hand): %v", resp.IssueKey, err)
+		}
+	})
+	return resp.IssueID, resp.IssueKey
+}
+
 func TestRealInternalComment(t *testing.T) {
 	key := os.Getenv("GFS_JIRA_SCRATCH_JSM")
 	site := os.Getenv("GFS_JIRA_SITE")
@@ -241,7 +281,7 @@ func TestRealInternalComment(t *testing.T) {
 	}
 	u, _ := url.Parse(site)
 	s := realSession(t, "jira://"+u.Host+"/"+key)
-	id, k := scratchIssue(t, s, key, "gfs internal comment check")
+	id, k := scratchRequest(t, s, key, "gfs internal comment check")
 	ic := &issueCtx{id: id, key: k, p: s.projects[key]}
 	root := el("issue")
 	c := el("comment", "internal", "true")
@@ -256,6 +296,14 @@ func TestRealInternalComment(t *testing.T) {
 	}
 	if v, _ := attr(r.Root.Child("comment"), "internal"); v != "true" {
 		t.Fatalf("the comment must stay internal:\n%v", r.Root.Child("comment"))
+	}
+	// Ask the service desk API too: it is what the portal shows customers.
+	var sc struct{ Values []struct{ Public bool } }
+	if err := s.c.Do(bg, http.MethodGet, "/rest/servicedeskapi/request/"+id+"/comment", nil, &sc); err != nil {
+		t.Fatal(err)
+	}
+	if len(sc.Values) != 1 || sc.Values[0].Public {
+		t.Fatalf("the service desk sees the comment as public: %+v", sc.Values)
 	}
 }
 
