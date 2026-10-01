@@ -18,8 +18,6 @@ var zoneSchema = &schema.Schema{
 			Attrs: []schema.Attr{{Name: "id", ReadOnly: true}, {Name: "name"}, {Name: "type"}, {Name: "ttl"}}},
 		{Name: "redirect", Kind: schema.Sub, ID: "id", Less: dnsx.Less,
 			Attrs: []schema.Attr{{Name: "id", ReadOnly: true}, {Name: "name"}, {Name: "type"}, {Name: "title"}, {Name: "keywords"}, {Name: "description"}}},
-		{Name: "dynhost", Kind: schema.Sub, ID: "id", Less: dnsx.Less,
-			Attrs: []schema.Attr{{Name: "id", ReadOnly: true}, {Name: "name"}, {Name: "ttl", ReadOnly: true}}},
 		{Name: "dynhost-login", Kind: schema.Sub, ID: "login", SortKey: "login",
 			Attrs: []schema.Attr{{Name: "login", ReadOnly: true}, {Name: "suffix"}, {Name: "name"}}},
 	},

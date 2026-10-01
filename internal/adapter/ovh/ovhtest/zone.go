@@ -31,7 +31,8 @@ type Redirect struct {
 	txt         int64   // id of the owned TXT record
 }
 
-// DynHost is a DynHost record; OVH backs it with the A record of the same id.
+// DynHost is how /dynHost/record shows an A record. OVH has no DynHost
+// object: every A record with TTL 60 is listed there, under its record id.
 type DynHost struct {
 	ID        int64  `json:"id"`
 	SubDomain string `json:"subDomain"`
@@ -39,6 +40,17 @@ type DynHost struct {
 	TTL       int64  `json:"ttl"`
 	Type      string `json:"type"`
 	Zone      string `json:"zone"`
+}
+
+// dynHosts is the /dynHost/record view of z's records.
+func (z *Zone) dynHosts() map[int64]*DynHost {
+	out := map[int64]*DynHost{}
+	for id, r := range z.Records {
+		if r.FieldType == "A" && r.TTL == 60 {
+			out[id] = &DynHost{ID: id, SubDomain: r.SubDomain, IP: r.Target, TTL: r.TTL, Type: "A", Zone: z.Name}
+		}
+	}
+	return out
 }
 
 // Login is a DynHost login.
@@ -65,7 +77,6 @@ type Zone struct {
 	SOA        SOA
 	Records    map[int64]*Record
 	Redirects  map[int64]*Redirect
-	DynHosts   map[int64]*DynHost
 	Logins     map[string]*Login
 	Refreshes  int  // POST /refresh calls
 	Dirty      bool // changed since the last refresh
@@ -78,7 +89,7 @@ func (s *Server) AddZone(name string) *Zone {
 	defer s.mu.Unlock()
 	z := &Zone{Name: name, DNSSEC: "disabled",
 		SOA:     SOA{Server: "dns101.ovh.net.", Email: "tech.ovh.net.", Serial: 2025101600, Refresh: 86400, Expire: 3600000, NxDomainTTL: 60, TTL: 3600},
-		Records: map[int64]*Record{}, Redirects: map[int64]*Redirect{}, DynHosts: map[int64]*DynHost{}, Logins: map[string]*Login{},
+		Records: map[int64]*Record{}, Redirects: map[int64]*Redirect{}, Logins: map[string]*Login{},
 		LastUpdate: time.Date(2025, 1, 13, 9, 57, 55, 0, time.UTC)}
 	s.zones[name] = z
 	for _, ns := range []string{"dns101.ovh.net.", "ns101.ovh.net."} {
@@ -120,24 +131,6 @@ func (s *Server) AddRedirect(zone string, rd Redirect) *Redirect {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.addRedirect(s.zones[zone], rd)
-}
-
-func (s *Server) addDynHost(z *Zone, d DynHost) *DynHost {
-	d.ID = s.nextID()
-	d.Zone, d.Type = z.Name, "A"
-	if d.TTL == 0 {
-		d.TTL = 60
-	}
-	s.addRecord(z, Record{ID: d.ID, FieldType: "A", SubDomain: d.SubDomain, Target: d.IP, TTL: d.TTL})
-	z.DynHosts[d.ID] = &d
-	return &d
-}
-
-// AddDynHost adds a DynHost record with its owned A record.
-func (s *Server) AddDynHost(zone string, d DynHost) *DynHost {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.addDynHost(s.zones[zone], d)
 }
 
 // AddLogin adds a DynHost login.

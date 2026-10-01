@@ -99,8 +99,6 @@ func summary(name string, n *xmltree.Node) string {
 		return s
 	case "redirect":
 		return fmt.Sprintf("redirect %s → %s (%s)", attr(n, "name"), textOf(n), attr(n, "type"))
-	case "dynhost":
-		return fmt.Sprintf("dynhost %s %s", attr(n, "name"), textOf(n))
 	case "dynhost-login":
 		l := attr(n, "login")
 		if l == "" {
@@ -238,7 +236,7 @@ func checkValue(typ, v string) error {
 }
 
 // cnameErrs maps record elements of local to their CNAME-rule error; a
-// redirect or DynHost holds an A record at its name.
+// redirect holds an A record at its name.
 func cnameErrs(local *xmltree.Node) map[*xmltree.Node]error {
 	var recs []dnsx.Rec
 	var nodes []*xmltree.Node
@@ -246,7 +244,7 @@ func cnameErrs(local *xmltree.Node) map[*xmltree.Node]error {
 		switch c.Name {
 		case "record":
 			recs = append(recs, dnsx.Rec{Name: attr(c, "name"), Type: attr(c, "type")})
-		case "redirect", "dynhost":
+		case "redirect":
 			recs = append(recs, dnsx.Rec{Name: attr(c, "name"), Type: "A"})
 		default:
 			continue
@@ -328,11 +326,6 @@ func check(a adapter.Action, local, base *xmltree.Node, cn map[*xmltree.Node]err
 		}
 		if textOf(ln) == "" {
 			return errors.New("redirect without a target")
-		}
-		return cn[ln]
-	case "dynhost":
-		if err := dnsx.CheckIPv4(textOf(ln)); err != nil {
-			return err
 		}
 		return cn[ln]
 	case "dynhost-login":
@@ -493,12 +486,6 @@ func (s *session) apply(ctx context.Context, z string, a adapter.Action, local, 
 		optional(body, "keywords", attr(ln, "keywords"))
 		optional(body, "description", attr(ln, "description"))
 		return true, do(http.MethodPut, zonePath(z, "redirection", id), body)
-	case "dynhost create":
-		return true, do(http.MethodPost, zonePath(z, "dynHost/record"), map[string]any{"subDomain": dnsx.APIName(attr(ln, "name")), "ip": textOf(ln)})
-	case "dynhost update":
-		return true, do(http.MethodPut, zonePath(z, "dynHost/record", id), map[string]any{"subDomain": dnsx.APIName(attr(ln, "name")), "ip": textOf(ln)})
-	case "dynhost delete":
-		return true, do(http.MethodDelete, zonePath(z, "dynHost/record", id), nil)
 	case "dynhost-login create":
 		if secret == nil {
 			return false, errors.New("a new dynhost-login needs a password: run gfs commit in a terminal")

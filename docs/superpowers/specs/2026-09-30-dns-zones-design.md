@@ -126,9 +126,9 @@ Common rules:
   <dnssec>enabled</dnssec>
   <record id="5102271" name="@"   type="A"     ttl="3600">203.0.113.10</record>
   <record id="5102272" name="@"   type="MX"    ttl="3600">10 mx1.mail.ovh.net.</record>
+  <record id="5300344544" name="home" type="A" ttl="60">198.51.100.5</record>
   <record id="5102275" name="www" type="CNAME">example.com.</record>
   <redirect id="5349102139" name="@" type="visible">www.example.com</redirect>
-  <dynhost id="5300344544" name="home" ttl="60">198.51.100.5</dynhost>
   <dynhost-login login="example.com-home" name="home"/>
 </zone>
 ```
@@ -148,17 +148,21 @@ Common rules:
 - `<redirect>`: `/redirection`: `subDomain` → `name`, `target`, `type`
   (`visible`, `visiblePermanent`, `invisible`), `title`, `keywords`,
   `description`. `PUT` cannot change `subDomain`.
-- `<dynhost>`: `/dynHost/record`: `subDomain` → `name`, `ip`, `ttl`
-  (read-only).
+- **DynHost is not an element.** OVH has no DynHost object: `GET
+  /dynHost/record` lists every A record with TTL 60, under its record id
+  (real-site check 2026-10-01: in all 20 zones the counts match, and a
+  record created through `/record` with TTL 60 appears there at once). A
+  DynHost is therefore a `<record type="A" ttl="60">`, edited through
+  `/record`; gfs does not read or write `/dynHost/record`.
 - **Owned records.** A redirect is backed by records OVH manages: an A
   record with the *same id* as the redirect (OVH's redirect server) and a
-  TXT record `"<n>|<target>"` at the same name. A DynHost entry is an A
-  record with the same id. Owned records are not written as `<record>`:
-  they appear only through their `<redirect>` / `<dynhost>`, so nothing
+  TXT record `"<n>|<target>"` at the same name. Owned records are not
+  written as `<record>`: they appear only through their `<redirect>`, so nothing
   shows twice and they cannot be edited past their owner. A TXT record is
   owned when it sits at a redirect's name and its value matches
   `^[0-9]+\|`.
-- `<dynhost-login>`: `/dynHost/login`: `login` (identifies it, no `id`),
+- `<dynhost-login>`: `/dynHost/login` (what lets a router update one
+  name's A record): `login` (identifies it, no `id`),
   `subDomain` → `name`. The password is never read or written to files;
   creating a login asks for it at commit (§7.4).
 
@@ -252,8 +256,7 @@ fragments per record type.
    (`lastUpdate` on `/domain/zone/{z}` was found not to move with edits:
    qa1.ovh shows 2025-01-13 with an SOA serial of 2025-10-16.)
 3. Changed or new zone: `soa`, `record` ids then each record,
-   `redirection` ids then each, `dynHost/record` ids then each,
-   `dynHost/login` names then each. Up to 8 requests in flight per
+   `redirection` ids then each, `dynHost/login` names then each. Up to 8 requests in flight per
    adapter. (The account's zones hold 4–80 records each.)
 4. A redirect's `title`/`keywords`/`description` are not in the export;
    a change to only those shows up on the next change to the zone or on
@@ -280,7 +283,7 @@ fragments per record type.
   selection) is deleted locally; with uncommitted local edits it is a
   conflict (`C`), resolved with `gfs resolve`.
 - Changing `zones=`/`exclude=` and pulling adds or removes zone files.
-- Merge is per element by id (`record`, `redirect`, `dynhost`,
+- Merge is per element by id (`record`, `redirect`,
   `mail-forward`, `failover` by `record`, `dynhost-login` by `login`); `soa`, `dnssec` and zone
   attributes merge as single elements. A remote change to an element the
   user also changed is the only conflict.
@@ -302,7 +305,6 @@ fragments per record type.
 | `soa` | `PUT /soa` | `modify-soa` |
 | `dnssec` | `POST` / `DELETE /dnssec` | `activate-dnssec` / `deactivate-dnssec` (`<ds>` read-only) |
 | `redirect` | `/redirection` POST/PUT/DELETE | — |
-| `dynhost` | `/dynHost/record` POST/PUT/DELETE | — |
 | `dynhost-login` | `/dynHost/login` POST (password asked) / PUT / DELETE | — |
 | `failover` | — | `failover-activate` / `failover-modify` / `failover-deactivate` |
 | `mail-forward` | — | `add-mail-forward` / `modify-mail-forward` / `delete-mail-forward` |
@@ -429,7 +431,7 @@ gain `(run gfs auth login <url>)`.
 ### 10.1 Fakes
 
 - `ovhtest`: verifies every signature and timestamp (403 on mismatch);
-  zones, records, SOA, DNSSEC, redirections, DynHost records and logins;
+  zones, records, SOA, DNSSEC, redirections, DynHost logins, and `/dynHost/record` as OVH serves it (every A record with TTL 60);
   `refresh` recorded; `lastUpdate` moved by writes; consumer-key flow
   (`/auth/credential`, pending then validated `/auth/currentCredential`);
   injected 429 with `Retry-After` and 5xx; request log.
@@ -455,7 +457,7 @@ gain `(run gfs auth login <url>)`.
 Gated by `GFS_OVH_SITE` / `GFS_CLOUDNS_SITE` (read-only: every zone
 round-trips unchanged) and `GFS_OVH_SCRATCH` / `GFS_CLOUDNS_SCRATCH`
 (a scratch zone: create, update, type change, delete, GeoDNS, failover,
-mail forward, redirect, DynHost, refresh; everything created is deleted).
+mail forward, redirect, a TTL change off 60, refresh; everything created is deleted).
 
 Safeguards for the write checks:
 
@@ -474,8 +476,7 @@ Safeguards for the write checks:
 
 OVH: 20 zones, every endpoint of §6.1, schema `/1.0/domain.json`.
 ClouDNS: qa1.pl, every endpoint of §6.2. Findings are folded into §5–§7:
-OVH `lastUpdate` is stale (version from `export`), redirects and DynHost
-own records with the same id, OVH SOA has no `retry`; ClouDNS gives a
+OVH `lastUpdate` is stale (version from `export`), redirects own records with the same id, OVH SOA has no `retry`; ClouDNS gives a
 zone serial, DS records, its TTL and type lists, and a location tree.
 Real-site checks (2026-10-01): every OVH zone (20) and the ClouDNS zone
 round-trip unchanged. On qa1.pl (ClouDNS, backup first) a record was

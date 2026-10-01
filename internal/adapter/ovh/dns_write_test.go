@@ -164,7 +164,6 @@ func TestCheckRefuses(t *testing.T) {
 		{"bad ttl", func(r *xmltree.Node) { add(r, `<record name="x" type="A" ttl="soon">1.2.3.4</record>`) }, "ttl"},
 		{"lossy", func(r *xmltree.Node) { add(r, "<record name=\"x\" type=\"TXT\">a�b</record>") }, "XML cannot hold"},
 		{"bad redirect type", func(r *xmltree.Node) { add(r, `<redirect name="r" type="sometimes">https://x</redirect>`) }, "redirect type"},
-		{"bad dynhost", func(r *xmltree.Node) { add(r, `<dynhost name="d">nope</dynhost>`) }, "not an IPv4 address"},
 		{"dnssec value", func(r *xmltree.Node) { setText(r.Child("dnssec"), "on") }, `want enabled or disabled`},
 		{"soa removed", func(r *xmltree.Node) { drop(r, r.Child("soa")) }, "SOA cannot be removed"},
 		{"soa number", func(r *xmltree.Node) { r.Child("soa").SetAttr("refresh", "daily") }, "refresh"},
@@ -198,14 +197,36 @@ func TestCheckOK(t *testing.T) {
 	}
 }
 
-func TestApplyRedirectDynHostLogin(t *testing.T) {
+// OVH lists every A record with TTL 60 as a DynHost too; a record created
+// with TTL 60 must read back as that record (real-site check, 2026-10-01).
+func TestCreatedTTL60RecordReadsBackAsRecord(t *testing.T) {
+	srv := site(t)
+	s := testSession(t, srv, selection{})
+	req := change(t, s, func(root *xmltree.Node) { add(root, `<record name="api" type="A" ttl="60">192.0.2.10</record>`) })
+	if e := errsOf(s.Apply(bg, req)); len(e) > 0 {
+		t.Fatal(e)
+	}
+	after, err := s.Fetch(bg, "a.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := find(after.Root, "record", "name", "api")
+	if r == nil || attr(r, "type") != "A" || attr(r, "ttl") != "60" || textOf(r) != "192.0.2.10" || attr(r, "id") == "" {
+		t.Fatal(xmltree.Print(after.Root, 0))
+	}
+	if d := after.Root.ChildrenNamed("dynhost"); len(d) > 0 {
+		t.Fatal(xmltree.Print(after.Root, 0))
+	}
+}
+
+func TestApplyRedirectAndLogin(t *testing.T) {
 	srv := site(t)
 	s := testSession(t, srv, selection{})
 	req := change(t, s, func(root *xmltree.Node) {
 		rd := root.Child("redirect")
 		setText(rd, "https://a.com/newer")
 		rd.SetAttr("type", "visible")
-		setText(root.Child("dynhost"), "198.51.100.9")
+		setText(find(root, "record", "name", "home"), "198.51.100.9")
 		add(root, `<dynhost-login suffix="nas" name="nas"/>`)
 		root.Child("dynhost-login").SetAttr("name", "home2")
 	})
@@ -228,9 +249,9 @@ func TestApplyRedirectDynHostLogin(t *testing.T) {
 		z.Logins["a.com-home"].SubDomain != "home2" {
 		t.Fatalf("%+v %+v", rd, z.Logins)
 	}
-	for _, d := range z.DynHosts {
-		if d.IP != "198.51.100.9" {
-			t.Fatal(d)
+	for _, r := range z.Records {
+		if r.SubDomain == "home" && r.Target != "198.51.100.9" {
+			t.Fatal(r)
 		}
 	}
 	// a redirect's name cannot change in place: delete and create

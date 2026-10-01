@@ -35,13 +35,6 @@ type apiRedirect struct {
 	Description *string `json:"description"`
 }
 
-type apiDynHost struct {
-	ID        int64  `json:"id"`
-	SubDomain string `json:"subDomain"`
-	IP        string `json:"ip"`
-	TTL       int64  `json:"ttl"`
-}
-
 type apiLogin struct {
 	Login     string `json:"login"`
 	SubDomain string `json:"subDomain"`
@@ -126,7 +119,6 @@ type zoneData struct {
 	dnssec    string
 	records   []apiRecord
 	redirects []apiRedirect
-	dynhosts  []apiDynHost
 	logins    []apiLogin
 }
 
@@ -141,10 +133,6 @@ func (s *session) fetchZone(ctx context.Context, z string) (*zoneData, error) {
 		},
 		func(ctx context.Context) (err error) {
 			d.redirects, err = getAll[apiRedirect](ctx, s, zonePath(z, "redirection"))
-			return
-		},
-		func(ctx context.Context) (err error) {
-			d.dynhosts, err = getAll[apiDynHost](ctx, s, zonePath(z, "dynHost/record"))
 			return
 		},
 		func(ctx context.Context) error {
@@ -219,9 +207,6 @@ func (d *zoneData) toXML(z string) *xmltree.Node {
 		owned[r.ID] = true
 		redirectAt[r.SubDomain] = true
 	}
-	for _, h := range d.dynhosts {
-		owned[h.ID] = true
-	}
 	for _, r := range d.records {
 		if owned[r.ID] || (r.FieldType == "TXT" && redirectAt[r.SubDomain] && ownedTXT.MatchString(r.Target)) {
 			continue
@@ -232,9 +217,6 @@ func (d *zoneData) toXML(z string) *xmltree.Node {
 	for _, r := range d.redirects {
 		root.Children = append(root.Children, withText(el("redirect", "id", itoa(r.ID), "name", dnsx.FileName(r.SubDomain), "type", r.Type,
 			"title", deref(r.Title), "keywords", deref(r.Keywords), "description", deref(r.Description)), r.Target))
-	}
-	for _, h := range d.dynhosts {
-		root.Children = append(root.Children, withText(el("dynhost", "id", itoa(h.ID), "name", dnsx.FileName(h.SubDomain), "ttl", ttlAttr(h.TTL)), h.IP))
 	}
 	for _, l := range d.logins {
 		root.Children = append(root.Children, el("dynhost-login", "login", l.Login, "name", dnsx.FileName(l.SubDomain)))

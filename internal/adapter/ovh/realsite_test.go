@@ -66,8 +66,8 @@ func TestRealReadRoundTrip(t *testing.T) {
 		if again, _ := s.Fetch(bg, z); again == nil || again.Version != r.Version {
 			t.Errorf("%s: version not stable", z)
 		}
-		t.Logf("%s: %d records, %d redirects, %d dynhosts", z, len(r.Root.ChildrenNamed("record")),
-			len(r.Root.ChildrenNamed("redirect")), len(r.Root.ChildrenNamed("dynhost")))
+		t.Logf("%s: %d records, %d redirects, %d dynhost logins", z, len(r.Root.ChildrenNamed("record")),
+			len(r.Root.ChildrenNamed("redirect")), len(r.Root.ChildrenNamed("dynhost-login")))
 	}
 }
 
@@ -83,7 +83,7 @@ func backup(t *testing.T, s *session, zone, dir string) {
 		t.Fatal(err)
 	}
 	data, _ := json.MarshalIndent(map[string]any{"soa": d.soa, "dnssec": d.dnssec, "records": d.records,
-		"redirects": d.redirects, "dynhosts": d.dynhosts, "logins": d.logins}, "", "  ")
+		"redirects": d.redirects, "logins": d.logins}, "", "  ")
 	root := d.toXML(zone)
 	if err := dnsx.WriteBackup(dir, map[string][]byte{"export.zone": []byte(export), "zone.json": data,
 		"zone.xml": envelope.Bytes(envelope.New(root), zoneSchema)}); err != nil {
@@ -140,7 +140,7 @@ func TestRealWrites(t *testing.T) {
 		}
 		local := r.Root.Clone()
 		left := 0
-		for _, el := range []string{"record", "redirect", "dynhost"} {
+		for _, el := range []string{"record", "redirect"} {
 			for _, c := range local.ChildrenNamed(el) {
 				if strings.HasPrefix(attr(c, "name"), name) {
 					local.Children = deleteNode(local.Children, c)
@@ -181,6 +181,12 @@ func TestRealWrites(t *testing.T) {
 		t.Error("the refresh must move the SOA serial")
 	}
 	edit(t, s, zone, func(root *xmltree.Node) { setText(named(root, "record", name), "192.0.2.11") })
+	// TTL 60 is what OVH lists as a DynHost; leaving it keeps the same record
+	edit(t, s, zone, func(root *xmltree.Node) { named(root, "record", name).SetAttr("ttl", "300") })
+	r, _ = s.Fetch(bg, zone)
+	if rec := named(r.Root, "record", name); rec == nil || attr(rec, "ttl") != "300" || textOf(rec) != "192.0.2.11" {
+		t.Fatal("ttl change")
+	}
 	edit(t, s, zone, func(root *xmltree.Node) {
 		rec := named(root, "record", name)
 		rec.SetAttr("type", "TXT")
@@ -195,10 +201,8 @@ func TestRealWrites(t *testing.T) {
 	edit(t, s, zone, func(root *xmltree.Node) {
 		root.Children = deleteNode(root.Children, named(root, "redirect", name+"-r"))
 	})
-	edit(t, s, zone, add(`<dynhost name="`+name+`-d">192.0.2.12</dynhost>`))
-	edit(t, s, zone, func(root *xmltree.Node) { root.Children = deleteNode(root.Children, named(root, "dynhost", name+"-d")) })
 	r, _ = s.Fetch(bg, zone)
-	for _, el := range []string{"record", "redirect", "dynhost"} {
+	for _, el := range []string{"record", "redirect"} {
 		for _, c := range r.Root.ChildrenNamed(el) {
 			if strings.HasPrefix(attr(c, "name"), name) {
 				t.Errorf("%s %s left behind", el, attr(c, "name"))

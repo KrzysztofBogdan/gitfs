@@ -14,8 +14,9 @@ Cloned 2 resources from cloudns://sub-1234 into cloudns-sub-1234
 ## OVH (`ovh-eu/`)
 
 MX and SRV parameters live inside the value, as OVH stores them. The
-redirect and the DynHost entry are backed by records OVH manages; those
-records are not shown as `<record>`.
+redirect is backed by records OVH manages; those records are not shown as
+`<record>`. The DynHost `home` is a plain A record with TTL 60 (that is
+all a DynHost is on OVH), with a login a router uses to update it.
 
 ```shell
 $ cd ovh-eu && gfs status

@@ -74,29 +74,6 @@ func init() {
 			delete(z.Redirects, rd.ID)
 			return nil, 0, ""
 		}))
-		mux.HandleFunc("POST /1.0/domain/zone/{z}/dynHost/record", s.zoneWrite(func(z *Zone, r *http.Request, body map[string]any) (any, int, string) {
-			return s.addDynHost(z, DynHost{SubDomain: str(body["subDomain"]), IP: str(body["ip"])}), 0, ""
-		}))
-		mux.HandleFunc("PUT /1.0/domain/zone/{z}/dynHost/record/{id}", s.zoneWrite(func(z *Zone, r *http.Request, body map[string]any) (any, int, string) {
-			d := z.DynHosts[pathID(r)]
-			if d == nil {
-				return nil, 404, "The requested object does not exist"
-			}
-			d.SubDomain, d.IP = str(body["subDomain"]), str(body["ip"])
-			if a := z.Records[d.ID]; a != nil {
-				a.SubDomain, a.Target = d.SubDomain, d.IP
-			}
-			return nil, 0, ""
-		}))
-		mux.HandleFunc("DELETE /1.0/domain/zone/{z}/dynHost/record/{id}", s.zoneWrite(func(z *Zone, r *http.Request, _ map[string]any) (any, int, string) {
-			id := pathID(r)
-			if z.DynHosts[id] == nil {
-				return nil, 404, "The requested object does not exist"
-			}
-			delete(z.DynHosts, id)
-			delete(z.Records, id)
-			return nil, 0, ""
-		}))
 		mux.HandleFunc("POST /1.0/domain/zone/{z}/dynHost/login", s.zoneWrite(func(z *Zone, r *http.Request, body map[string]any) (any, int, string) {
 			pw := str(body["password"])
 			if len(pw) < 8 {

@@ -38,8 +38,8 @@ func init() {
 		mux.HandleFunc("GET /1.0/domain/zone/{z}/record/{id}", s.byID(func(z *Zone, id int64) any { return nilIf(z.Records[id]) }))
 		mux.HandleFunc("GET /1.0/domain/zone/{z}/redirection", s.zoneRead(func(z *Zone, r *http.Request) any { return keys64(z.Redirects) }))
 		mux.HandleFunc("GET /1.0/domain/zone/{z}/redirection/{id}", s.byID(func(z *Zone, id int64) any { return nilIf(z.Redirects[id]) }))
-		mux.HandleFunc("GET /1.0/domain/zone/{z}/dynHost/record", s.zoneRead(func(z *Zone, r *http.Request) any { return keys64(z.DynHosts) }))
-		mux.HandleFunc("GET /1.0/domain/zone/{z}/dynHost/record/{id}", s.byID(func(z *Zone, id int64) any { return nilIf(z.DynHosts[id]) }))
+		mux.HandleFunc("GET /1.0/domain/zone/{z}/dynHost/record", s.zoneRead(func(z *Zone, r *http.Request) any { return keys64(z.dynHosts()) }))
+		mux.HandleFunc("GET /1.0/domain/zone/{z}/dynHost/record/{id}", s.byID(func(z *Zone, id int64) any { return nilIf(z.dynHosts()[id]) }))
 		mux.HandleFunc("GET /1.0/domain/zone/{z}/dynHost/login", s.zoneRead(func(z *Zone, r *http.Request) any { return sortedKeys(z.Logins) }))
 		mux.HandleFunc("GET /1.0/domain/zone/{z}/dynHost/login/{login}", s.zoneRead(func(z *Zone, r *http.Request) any {
 			return nilIf(z.Logins[r.PathValue("login")])

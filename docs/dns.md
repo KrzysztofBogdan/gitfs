@@ -66,22 +66,26 @@ Common rules:
   <dnssec>enabled</dnssec>
   <record id="5102271" name="@" type="A">203.0.113.10</record>
   <record id="5102272" name="@" type="MX">10 mx1.mail.ovh.net.</record>
+  <record id="5300344544" name="home" type="A" ttl="60">198.51.100.5</record>
   <record id="5102275" name="www" type="CNAME" ttl="300">example.com.</record>
   <redirect id="5349102139" name="old" type="visiblePermanent" title="Moved">https://example.com/new</redirect>
-  <dynhost id="5300344544" name="home" ttl="60">198.51.100.5</dynhost>
   <dynhost-login login="example.com-home" name="home"/>
 </zone>
 ```
 
 * `<record>`: OVH stores MX, SRV and similar parameters inside the value
   (`10 mx1.mail.ovh.net.`). No `ttl` means the zone default.
-* `<redirect>` (types `visible`, `visiblePermanent`, `invisible`) and
-  `<dynhost>` are backed by records OVH manages (an A record with the same
-  id, and a TXT `"1|…"` for a redirect). Those records do not appear as
-  `<record>`; edit the redirect or DynHost instead.
-* `<dynhost-login>`: a new one needs `suffix` (the login becomes
-  `<zone>-<suffix>`) and `name`; gfs asks for its password at commit. The
-  password is never stored in a file.
+* `<redirect>` (types `visible`, `visiblePermanent`, `invisible`) is
+  backed by records OVH manages (an A record with the same id and a TXT
+  `"1|…"`). Those records do not appear as `<record>`; edit the redirect
+  instead.
+* DynHost: OVH has no separate DynHost record. Its DynHost list is every
+  A record with TTL 60, so a DynHost is a plain `<record type="A"
+  ttl="60">`, and IP updates sent by a router show up as a changed value
+  on the next pull.
+* `<dynhost-login>`: lets a router update one name. A new one needs
+  `suffix` (the login becomes `<zone>-<suffix>`) and `name`; gfs asks for
+  its password at commit. The password is never stored in a file.
 * `<soa>`: `server` and `serial` are read-only.
 * `<dnssec>`: `enabled` or `disabled`; `enableInProgress` and
   `disableInProgress` are read-only while OVH works.

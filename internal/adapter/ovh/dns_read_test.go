@@ -10,8 +10,9 @@ import (
 
 func str(s string) *string { return &s }
 
-// site is a fake OVH with zone a.com: records, a redirect and a DynHost
-// (each backed by records of its own), a DynHost login, DNSSEC on.
+// site is a fake OVH with zone a.com: records (one an A record with TTL 60,
+// which OVH also lists as a DynHost), a redirect (backed by records of its
+// own), a DynHost login, DNSSEC on.
 func site(t *testing.T) *ovhtest.Server {
 	t.Helper()
 	srv := ovhtest.New()
@@ -23,7 +24,7 @@ func site(t *testing.T) *ovhtest.Server {
 	srv.AddRecord("a.com", ovhtest.Record{FieldType: "TXT", TTL: 600, Target: "v=spf1 include:mx.ovh.com -all"})
 	srv.AddRecord("a.com", ovhtest.Record{FieldType: "CNAME", SubDomain: "www", Target: "a.com."})
 	srv.AddRedirect("a.com", ovhtest.Redirect{SubDomain: "old", Target: "https://a.com/new", Type: "visiblePermanent", Title: str("Moved")})
-	srv.AddDynHost("a.com", ovhtest.DynHost{SubDomain: "home", IP: "198.51.100.5"})
+	srv.AddRecord("a.com", ovhtest.Record{FieldType: "A", SubDomain: "home", TTL: 60, Target: "198.51.100.5"})
 	srv.AddLogin("a.com", ovhtest.Login{Login: "a.com-home", SubDomain: "home"})
 	srv.AddZone("b.pl")
 	return srv
@@ -59,9 +60,9 @@ func TestReadZone(t *testing.T) {
   <record id="5100000001" name="@" type="NS">dns101.ovh.net.</record>
   <record id="5100000002" name="@" type="NS">ns101.ovh.net.</record>
   <record id="` + itoa(ids["TXT "]) + `" name="@" type="TXT" ttl="600">v=spf1 include:mx.ovh.com -all</record>
+  <record id="` + itoa(ids["A home"]) + `" name="home" type="A" ttl="60">198.51.100.5</record>
   <record id="` + itoa(ids["CNAME www"]) + `" name="www" type="CNAME">a.com.</record>
   <redirect id="` + itoa(ids["A old"]) + `" name="old" type="visiblePermanent" title="Moved">https://a.com/new</redirect>
-  <dynhost id="` + itoa(ids["A home"]) + `" name="home" ttl="60">198.51.100.5</dynhost>
   <dynhost-login login="a.com-home" name="home"/>
 </zone>`
 	if got != want {
