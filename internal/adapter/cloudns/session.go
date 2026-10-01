@@ -123,7 +123,7 @@ func (s *session) geoFile(ctx context.Context) (*adapter.Resource, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := el("geodns")
+	root := el("geodns", "name", geodnsID) // the schema's identity attribute: matches the file to its index entry
 	for _, l := range g.list {
 		root.Children = append(root.Children, el("location", "code", l.Code, "name", l.Name, "parent", g.codeOf[l.Parent]))
 	}
