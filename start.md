@@ -5,7 +5,8 @@ You edit files; `gfs commit` makes the remote look like your working tree.
 The vocabulary is git's, but the remote is a live service, not a repository:
 there is no history graph, only the current remote state.
 
-Service details: [docs/confluence.md](docs/confluence.md), [docs/jira.md](docs/jira.md).
+Service details: [docs/confluence.md](docs/confluence.md), [docs/jira.md](docs/jira.md),
+[docs/dns.md](docs/dns.md) (OVH and ClouDNS zones).
 
 ## Install
 
@@ -20,6 +21,7 @@ INSTALL_DIR=/some/dir ./install.sh
 gfs auth set me@example.com --host acme.atlassian.net   # once per account
 gfs clone confluence://acme.atlassian.net          # every space; or .../ENG for one
 # or: gfs clone jira://acme.atlassian.net          # every project; or .../GEN for one
+# or: gfs clone ovh://eu                            # DNS zones; cloudns://sub-1234 for ClouDNS
 cd acme
 vim "eng/Home/Architecture.xml"
 gfs status                       # what will happen on the remote
@@ -55,7 +57,7 @@ current directory; no path means the whole tree.
 | `gfs schema <adapter>` | Print a RELAX NG schema for the adapter's files (`xmllint --relaxng`). |
 
 Built-in docs: `gfs help start` (this page), `gfs help confluence`,
-`gfs help confluence-storage`, `gfs help jira`.
+`gfs help confluence-storage`, `gfs help jira`, `gfs help dns`.
 
 ### commit flags
 
@@ -63,6 +65,7 @@ Built-in docs: `gfs help start` (this page), `gfs help confluence`,
 |------|---------|
 | `--dry-run` | Resolve and check everything against the remote, execute nothing. Exit code as if it had run. |
 | `--allow <class>` | Treat `ask` as `allow` for this policy class in this run. Repeatable. |
+| `--force` | Treat every `ask` as `allow` in this run; a `deny` still refuses. |
 | `--no-merge` | If the remote changed since your base, refuse the file instead of merging. |
 
 ### pull flags
@@ -143,7 +146,10 @@ delete = ask
   `deny`: skip and report.
 * Defaults: everything `allow` except `delete` (and `send`, `publish`,
   `reply`, `approve` for services that have them), which are `ask`. Jira
-  `reply` is a public comment that emails a customer.
+  `reply` is a public comment that emails a customer. Every DNS change is
+  class `dns`, which asks.
+* An ask shows what the action does, and some print a warning first (DNSSEC,
+  a zone's own NS records).
 * `gfs commit --allow delete` lifts `ask` for one run. An agent's permission
   rules can allow `gfs commit` and deny `gfs commit --allow`.
 
@@ -154,12 +160,17 @@ Tokens live in the system keyring, never in files. Tokens already stored by
 
 | command | what it does |
 |---------|--------------|
+| `gfs auth login <url>` | Guided: says where to get credentials for the remote (Jira, Confluence, OVH, ClouDNS), checks them and stores them. |
 | `gfs auth set <email> [--host <host>]` | Store or replace the token (prompted without echo, or read from stdin). `--host` verifies it on that site first and makes the email the site's default. |
-| `gfs auth rm <email>` | Delete gfs's token for that email. |
+| `gfs auth rm <email>` / `<url>` | Delete gfs's token for that email, or a remote's credentials (`gfs auth rm ovh://eu`). |
 | `gfs auth clear [--yes]` | Delete every token gfs stored. Asks unless `--yes`. |
-| `gfs auth list` | Stored identities, their source (`gfs` / `alogin`), and the hosts that default to them. Never prints tokens. |
+| `gfs auth list` | Stored identities and remote entries, their source (`gfs` / `alogin`), and the hosts that default to them. Never prints tokens. |
 
-Which account a command uses, first match wins:
+An expired or revoked Atlassian token makes commands say `run gfs auth login <url>`.
+OVH and ClouDNS credentials are one keyring entry per remote (`ovh:eu`,
+`cloudns:sub-1234`), or environment variables in CI (`gfs help dns`).
+
+Which Atlassian account a command uses, first match wins:
 
 1. `GFS_CONFLUENCE_EMAIL` or `GFS_JIRA_EMAIL` (and `GFS_CONFLUENCE_TOKEN` / `GFS_JIRA_TOKEN` for the token)
 2. the user in the URL: `confluence://me%40example.com@acme.atlassian.net/ENG`

@@ -35,7 +35,8 @@ func TestOVHCloneEditCommit(t *testing.T) {
 	if len(srv.Calls()) != 0 {
 		t.Fatalf("a denied commit sends nothing: %v", srv.Calls())
 	}
-	mustContain(t, mustRun(t, 0, "commit", "--force"), "refresh", "ok")
+	mustContain(t, mustRun(t, 0, "commit", "--force"), "create  domain/zone/a.com.xml   ok  record[1] create record api A 192.0.2.10 ttl 300",
+		"refresh domain/zone/a.com.xml   ok", "3 actions, 0 failed, 0 denied")
 	b, _ := os.ReadFile(file)
 	if !regexp.MustCompile(`<record id="\d+" name="api" type="A" ttl="300">192.0.2.10</record>`).Match(b) || srv.Zone("a.com").Refreshes != 1 {
 		t.Fatalf("new record gets its id:\n%s", b)
@@ -62,7 +63,7 @@ func TestClouDNSCloneEditCommit(t *testing.T) {
 	file := "zone/qa1.pl.xml"
 	replaceIn(t, file, "</zone>", `<record name="api" type="A" ttl="60" geo="EUR">203.0.113.20</record></zone>`)
 	mustContain(t, mustRun(t, 0, "status"), "create record api A 203.0.113.20 ttl 60 geo EUR")
-	mustContain(t, mustRun(t, 0, "commit", "--allow", "dns"), "create  zone/qa1.pl.xml   ok")
+	mustContain(t, mustRun(t, 0, "commit", "--allow", "dns"), "create  zone/qa1.pl.xml   ok  record[1] id=")
 	if b, _ := os.ReadFile(file); !regexp.MustCompile(`<record id="\d+" name="api" type="A" ttl="60" geo="EUR">203.0.113.20</record>`).Match(b) {
 		t.Fatalf("%s", b)
 	}

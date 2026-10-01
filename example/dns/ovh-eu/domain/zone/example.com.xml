@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <zone name="example.com">
+      <soa ttl="3600" refresh="86400" expire="3600000" nx-domain-ttl="60" email="tech.ovh.net." server="dns101.ovh.net." serial="2025101600"/>
+      <dnssec>enabled</dnssec>
+      <record id="5102271" name="@" type="A">203.0.113.10</record>
+      <record id="5102272" name="@" type="MX">10 mx1.mail.ovh.net.</record>
+      <record id="5100000001" name="@" type="NS">dns101.ovh.net.</record>
+      <record id="5100000002" name="@" type="NS">ns101.ovh.net.</record>
+      <record id="5102280" name="@" type="TXT" ttl="600">v=spf1 include:mx.ovh.com -all</record>
+      <record name="api" type="A" ttl="300">203.0.113.20</record>
+      <record id="5102275" name="www" type="CNAME">example.com.</record>
+      <redirect id="5349102139" name="old" type="visiblePermanent" title="Moved">https://example.com/new</redirect>
+      <dynhost id="5300344544" name="home" ttl="60">198.51.100.5</dynhost>
+      <dynhost-login login="example.com-home" name="home"/>
+    </zone>
+  </content>
+</gfs>

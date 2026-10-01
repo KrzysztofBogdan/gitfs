@@ -19,6 +19,9 @@ func TestDocsCommands(t *testing.T) {
 	}
 	mustContain(t, mustRun(t, 0, "schema", "jira"), "<grammar", `<element name="paragraph">`)
 	mustContain(t, mustRun(t, 0, "help", "jira"), "# gfs and Jira Cloud")
+	mustContain(t, mustRun(t, 0, "help", "dns"), "# gfs and DNS zones (OVH, ClouDNS)")
+	mustContain(t, mustRun(t, 0, "schema", "ovh"), "<grammar", `<element name="record">`, `<element name="dynhost-login">`)
+	mustContain(t, mustRun(t, 0, "schema", "cloudns"), `<element name="failover">`, `<name>geodns</name>`)
 	mustRun(t, 2, "schema", "slack")
 
 	mustContain(t, mustRun(t, 0, "example", "confluence"), "panel", "codeBlock")
