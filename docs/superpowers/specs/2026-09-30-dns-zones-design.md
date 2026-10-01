@@ -1,7 +1,10 @@
 # DNS zones design: OVH and ClouDNS
 
-Status: design approved in conversation 2026-09-30; field names marked
-*(spike)* are confirmed against the real APIs before the plan is written.
+Status: design approved in conversation 2026-09-30. OVH confirmed by the
+read-only spike on 2026-10-01 (20 zones, schema `/1.0/domain.json`);
+ClouDNS confirmed the same day on qa1.pl (138 records, GeoDNS zone).
+Failover fields, which no current record uses, are marked *(spike)* and
+are confirmed by the real-site write checks on a scratch zone.
 
 ## 1. Purpose
 
@@ -93,10 +96,12 @@ cloudns-sub-1234/
   zone/example.com.xml
 ```
 
-`.geodns.xml` (ClouDNS, read-only) lists the GeoDNS locations the plan
-allows: `<location code="EU">Europe</location>`… Written on clone,
-refreshed on `pull --full` or when missing; a local edit is refused on
-commit. It exists only when the account has GeoDNS.
+`.geodns.xml` (ClouDNS, read-only) lists the GeoDNS locations
+(`get-geodns-locations`), a tree: `<location code="NAM" name="North
+America" parent="DEFAULT"/>`, `<location code="US" name="United States"
+parent="NAM"/>`… Written on clone, refreshed on `pull --full` or when
+missing; a local edit is refused on commit. It exists only when some
+zone is a GeoDNS zone (`list-zones` `"zone":"geodns"`).
 
 ## 5. File format
 
@@ -117,13 +122,13 @@ Common rules:
 
 ```xml
 <zone name="example.com">
-  <soa ttl="3600" refresh="86400" retry="3600" expire="3600000" minimum="60"/>
+  <soa ttl="3600" refresh="86400" expire="3600000" nx-domain-ttl="60" email="tech.ovh.net." server="dns101.ovh.net." serial="2025101600"/>
   <dnssec>enabled</dnssec>
   <record id="5102271" name="@"   type="A"     ttl="3600">203.0.113.10</record>
   <record id="5102272" name="@"   type="MX"    ttl="3600">10 mx1.mail.ovh.net.</record>
   <record id="5102275" name="www" type="CNAME">example.com.</record>
-  <redirect id="881" name="old" type="visiblePermanent" title="t" keywords="k" description="d">https://example.com/new</redirect>
-  <dynhost id="42" name="home">198.51.100.5</dynhost>
+  <redirect id="5349102139" name="@" type="visible">www.example.com</redirect>
+  <dynhost id="5300344544" name="home" ttl="60">198.51.100.5</dynhost>
   <dynhost-login login="example.com-home" name="home"/>
 </zone>
 ```
@@ -131,14 +136,28 @@ Common rules:
 - `<record>`: OVH `fieldType` → `type`, `subDomain` → `name` (`""` ↔ `@`),
   `target` → text, `ttl` (omitted when 0 = zone default). MX priority,
   SRV priority/weight/port etc. stay inside `target`, as OVH stores them.
-- `<soa>`: OVH SOA fields that `PUT /soa` accepts *(spike)*; `server` and
-  `email` as read-only attributes if OVH returns them.
-- `<dnssec>`: `enabled` / `disabled`; absent when OVH reports the zone
-  cannot use DNSSEC.
-- `<redirect>`: `/redirection`: `subDomain`, `target`, `type`
+- Record types (OVH `RecordTypeEnum`): A, AAAA, CAA, CNAME, DKIM, DMARC,
+  DNAME, HTTPS, LOC, MX, NAPTR, NS, PTR, RP, SPF, SRV, SSHFP, SVCB, TLSA,
+  TXT. `PUT` changes `subDomain`, `target`, `ttl`; `fieldType` cannot
+  change (type change = delete + create).
+- `<soa>`: `ttl`, `refresh`, `expire`, `nx-domain-ttl`, `email` (all
+  `PUT /soa`); `server` and `serial` read-only. OVH has no `retry` field.
+- `<dnssec>`: `enabled` / `disabled`, or read-only `enableInProgress` /
+  `disableInProgress`; absent when the zone reports `dnssecSupported:
+  false`.
+- `<redirect>`: `/redirection`: `subDomain` → `name`, `target`, `type`
   (`visible`, `visiblePermanent`, `invisible`), `title`, `keywords`,
-  `description` *(spike)*.
-- `<dynhost>`: `/dynHost/record`: `subDomain`, `ip`.
+  `description`. `PUT` cannot change `subDomain`.
+- `<dynhost>`: `/dynHost/record`: `subDomain` → `name`, `ip`, `ttl`
+  (read-only).
+- **Owned records.** A redirect is backed by records OVH manages: an A
+  record with the *same id* as the redirect (OVH's redirect server) and a
+  TXT record `"<n>|<target>"` at the same name. A DynHost entry is an A
+  record with the same id. Owned records are not written as `<record>`:
+  they appear only through their `<redirect>` / `<dynhost>`, so nothing
+  shows twice and they cannot be edited past their owner. A TXT record is
+  owned when it sits at a redirect's name and its value matches
+  `^[0-9]+\|`.
 - `<dynhost-login>`: `/dynHost/login`: `login` (identifies it, no `id`),
   `subDomain` → `name`. The password is never read or written to files;
   creating a login asks for it at commit (§7.4).
@@ -146,11 +165,13 @@ Common rules:
 ### 5.2 ClouDNS
 
 ```xml
-<zone name="example.com" type="master" active="true">
-  <soa primary="ns1.cloudns.net" admin="support@cloudns.net" refresh="7200" retry="1800" expire="1209600" ttl="3600"/>
-  <dnssec>enabled</dnssec>
+<zone name="example.com" type="master" kind="geodns" active="true">
+  <soa primary="gns1.cloudns.net" admin="support@cloudns.net" refresh="7200" retry="1800" expire="1209600" ttl="3600" serial="2026092802"/>
+  <dnssec status="enabled">
+    <ds key-tag="12626" algorithm="13" digest-type="2">B156B918…CC62</ds>
+  </dnssec>
   <record id="11" name="@"   type="MX" ttl="3600" priority="10">mx1.example.com</record>
-  <record id="12" name="api" type="A"  ttl="60" geo="EU">203.0.113.20
+  <record id="12" name="api" type="A"  ttl="60" geo="EUR">203.0.113.20
     <failover check="http" host="api.example.com" path="/health" region="eu" period="60">
       <backup>198.51.100.7</backup>
     </failover>
@@ -164,7 +185,18 @@ Common rules:
 </zone>
 ```
 
-- Zone attributes: `type` (`master`, `parked`, … read-only), `active`.
+- Zone attributes: `type` (`master`, `parked`, … read-only), `kind`
+  (`domain` / `geodns`, read-only, from `list-zones` `zone`), `active`
+  (`status` `"1"`).
+- Record types and allowed TTLs are read from the API
+  (`get-available-record-types`, `get-available-ttl`) and cached; the
+  qa1.pl account allows 60, 300, 600, 900, 1800, 3600, 21600, 43200,
+  86400, 172800, 259200, 604800, 1209600, 2592000.
+- List-API quirks: ids, TTLs and priorities are strings; `status` is a
+  number; `geodns-location` is sometimes a string, sometimes a number;
+  an empty `mail-forwards` answer is `{}`, an empty `records` answer
+  `[]`. `dynamicurl_status` and the dynamic URL (a secret per record)
+  are not written to files.
 - `<record>`: `type`, `host` → `name`, `record` → text, `ttl`, and the
   type-specific parameters of `add-record` as attributes: `priority`,
   `weight`, `port`; WR `redirect-type`, `frame`, `frame-title`,
@@ -176,16 +208,25 @@ Common rules:
   `cert-type`, `cert-key-tag`, `cert-algorithm`; SMIMEA `smimea-usage`,
   `smimea-selector`, `smimea-matching-type`; RP `mail`, `txt`; HINFO
   `cpu`, `os`; LOC `lat-deg` … `v-precision`; HTTPS/SVCB `parameters`.
-  Exact list and which of them the list API returns *(spike)*.
+  qa1.pl only uses `priority`; how the list API returns the other
+  types' parameters is confirmed by the real-site write checks *(spike)*.
 - `status="0"` marks an inactive record (default active, omitted).
-- `geo`: GeoDNS location code; absent is the default location. Allowed
-  on A, AAAA, CNAME, NAPTR, SRV.
+- `geo`: GeoDNS location *code* (`NAM`, `US`); the API's numeric
+  `geodns-location` id is mapped through `.geodns.xml` both ways. Absent
+  is the default location (`DEFAULT`, id 1). Allowed on A, AAAA, CNAME,
+  NAPTR, SRV, and only in GeoDNS zones; ALIAS records in GeoDNS zones
+  carry a location too.
 - `<failover>` inside the record it watches: check type and its
   parameters, monitoring region, period, notification settings, up/down
   handlers, `<backup>` IPs (1–5) in order *(spike: names)*.
 - `<mail-forward>`: `box`, `host` (omitted for the apex), `destination`.
-- `<soa>`: `modify-soa` fields.
-- `<dnssec>`: as OVH; activation state from the DNSSEC API *(spike)*.
+- `<soa>`: `soa-details` → `primaryNS` → `primary`, `adminMail` →
+  `admin`, `refresh`, `retry`, `expire`, `defaultTTL` → `ttl` (editable
+  through `modify-soa`), `serialNumber` → `serial` (read-only).
+- `<dnssec status="enabled|disabled">` from `get-dnssec-ds-records`
+  (`status` `"1"` / `"0"`); its `<ds>` children are read-only and show
+  what to publish at the registrar. Absent when `is-dnssec-available`
+  answers 0.
 
 ### 5.3 Schemas
 
@@ -199,25 +240,31 @@ fragments per record type.
 ### 6.1 OVH
 
 1. `GET /domain/zone` → zone names, filtered by the selection.
-2. Per zone `GET /domain/zone/{z}` → `lastUpdate`. It is the zone's
-   version in the index. Equal to the indexed version → zone skipped
-   (no further calls), unless `--full`.
-3. Changed or new zone: `soa`, `dnssec`, `record` ids then each record,
+2. Per zone `GET /domain/zone/{z}/export` (the zone as BIND text, SOA
+   serial included) and `GET /dnssec`. The zone's version is a hash of
+   both. Equal to the indexed version → zone skipped, unless `--full`.
+   (`lastUpdate` on `/domain/zone/{z}` was found not to move with edits:
+   qa1.ovh shows 2025-01-13 with an SOA serial of 2025-10-16.)
+3. Changed or new zone: `soa`, `record` ids then each record,
    `redirection` ids then each, `dynHost/record` ids then each,
    `dynHost/login` names then each. Up to 8 requests in flight per
-   adapter.
-4. If the spike shows `lastUpdate` does not move for redirection or
-   DynHost edits, those parts are refetched on every pull for every
-   zone, and the version becomes `lastUpdate` plus a hash of them.
+   adapter. (The account's zones hold 4–80 records each.)
+4. A redirect's `title`/`keywords`/`description` are not in the export;
+   a change to only those shows up on the next change to the zone or on
+   `pull --full`.
 
 ### 6.2 ClouDNS
 
-1. `list-zones.json` paged (100 rows) → zones, filtered.
-2. Per zone: `records.json` paged (100 rows), `soa-details.json`, DNSSEC
-   state, `mail-forwards.json`, `failover-settings.json` for each record
-   the list marks as having failover. Version = hash of the canonical
-   file content. Unchanged hash → file untouched.
-3. `.geodns.xml` from `get-available-geodns-locations` *(spike: name)*.
+1. `list-zones.json` paged (100 rows) → zones with `serial`, filtered.
+2. Per zone, records part: when `serial` differs from the indexed one
+   (or `--full`): `records.json` paged (100 rows; `get-records-count`
+   says how many), `soa-details.json`, `get-dnssec-ds-records.json`.
+3. Per zone, every pull (they do not move the serial): `mail-forwards`,
+   and `failover-settings` for each record whose list entry has
+   `failover` `"1"`.
+4. Version = serial plus a hash of the step 3 answers; unchanged → file
+   untouched.
+5. `.geodns.xml` from `get-geodns-locations.json`.
 
 ### 6.3 Both
 
@@ -245,7 +292,7 @@ fragments per record type.
 | record create / update / delete | `POST` / `PUT` / `DELETE /domain/zone/{z}/record[/{id}]` | `add-record` / `mod-record` / `delete-record` |
 | record type change | delete + create (new id) | delete + create |
 | `soa` | `PUT /soa` | `modify-soa` |
-| `dnssec` | `POST` / `DELETE /dnssec` | `activate-dnssec` / `deactivate-dnssec` |
+| `dnssec` | `POST` / `DELETE /dnssec` | `activate-dnssec` / `deactivate-dnssec` (`<ds>` read-only) |
 | `redirect` | `/redirection` POST/PUT/DELETE | — |
 | `dynhost` | `/dynHost/record` POST/PUT/DELETE | — |
 | `dynhost-login` | `/dynHost/login` POST (password asked) / PUT / DELETE | — |
@@ -272,8 +319,8 @@ commit that touches the zone (or an explicit re-run) refreshes again.
 - value syntax per type: A IPv4, AAAA IPv6, CNAME/MX/NS/PTR/ALIAS
   hostnames, SRV/CAA/TLSA/SSHFP/DS attribute presence and ranges;
 - CNAME not at `@`, and not alongside other records of the same name;
-- ClouDNS TTL in {60, 300, 900, 1800, 3600, 21600, 43200, 86400,
-  172800, 259200, 604800, 1209600, 2592000};
+- ClouDNS TTL in the account's `get-available-ttl` list and type in
+  `get-available-record-types`;
 - `geo` present in `.geodns.xml` and allowed for the type;
 - names inside the zone (no absolute name for another zone);
 - edits to read-only attributes.
@@ -341,7 +388,7 @@ consumer key.
 ### 8.2 ClouDNS
 
 Print where API users are managed (and that a sub-user can be limited to
-zones), read the password, verify with `login.json` *(spike)* and
+zones), read the password, verify with `login.json` (`Success login.`) and
 `list-zones.json`, print the zone count, store.
 
 ### 8.3 Atlassian (`jira://`, `confluence://`, customer URLs)
@@ -400,13 +447,17 @@ round-trips unchanged) and `GFS_OVH_SCRATCH` / `GFS_CLOUDNS_SCRATCH`
 (a scratch zone: create, update, type change, delete, GeoDNS, failover,
 mail forward, redirect, DynHost, refresh; everything created is deleted).
 
-### 10.4 Spike (before the plan, read-only)
+### 10.4 Spike (done 2026-10-01, read-only)
 
-Against the user's test accounts, with credentials the user stores and
-Claude reads only in memory: exact JSON of every endpoint in §6, the
-fields marked *(spike)*, whether `lastUpdate` moves for redirection and
-DynHost edits (answered later by the real-site write checks if it needs
-a write), and the ClouDNS rate-limit answer text if one occurs.
+OVH: 20 zones, every endpoint of §6.1, schema `/1.0/domain.json`.
+ClouDNS: qa1.pl, every endpoint of §6.2. Findings are folded into §5–§7:
+OVH `lastUpdate` is stale (version from `export`), redirects and DynHost
+own records with the same id, OVH SOA has no `retry`; ClouDNS gives a
+zone serial, DS records, its TTL and type lists, and a location tree.
+Still open (answered by the real-site write checks on a scratch zone):
+failover field names, the list API's shape for SRV/CAA/TLSA/WR/…
+parameters, whether ClouDNS's serial moves for every record edit, and
+the ClouDNS rate-limit answer text.
 
 ## 11. Docs
 
