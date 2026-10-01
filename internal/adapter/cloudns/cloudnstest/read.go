@@ -150,7 +150,12 @@ func init() {
 			}
 			return st
 		})
-		s.handle("get-geodns-locations", func(*Server, form) any { return Locations })
+		s.handle("get-geodns-locations", func(s *Server, f form) any {
+			if z := s.zone(f); z == nil || z.Kind != "geodns" {
+				return failed("Missing domain-name") // as ClouDNS: locations are asked for per GeoDNS zone
+			}
+			return Locations
+		})
 		s.handle("get-available-ttl", func(*Server, form) any { return TTLs })
 		s.handle("get-available-record-types", func(*Server, form) any { return Types })
 	})

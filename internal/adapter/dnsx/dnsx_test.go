@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
@@ -94,5 +95,25 @@ func TestXMLText(t *testing.T) {
 	n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: XMLText("x\x00y")}}
 	if _, err := xmltree.ParseString(xmltree.Print(n, 0)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestScratchZone(t *testing.T) {
+	now := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	if _, _, skip := ScratchZone("ovh", "GFS_OVH_SCRATCH", now(nil), time.Time{}); skip == "" {
+		t.Fatal("unset must skip")
+	}
+	env := map[string]string{"GFS_OVH_SCRATCH": "x.com", "GFS_DNS_WRITE_CONFIRM": "y.com", "GFS_DNS_BACKUP_DIR": "/b"}
+	if _, _, skip := ScratchZone("ovh", "GFS_OVH_SCRATCH", now(env), time.Time{}); !strings.Contains(skip, "must repeat") {
+		t.Fatal(skip)
+	}
+	env["GFS_DNS_WRITE_CONFIRM"] = "x.com"
+	z, dir, skip := ScratchZone("ovh", "GFS_OVH_SCRATCH", now(env), time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+	if z != "x.com" || dir != "/b/ovh-x.com-20261001T120000Z" || skip != "" {
+		t.Fatal(z, dir, skip)
+	}
+	delete(env, "GFS_DNS_BACKUP_DIR")
+	if _, _, skip := ScratchZone("ovh", "GFS_OVH_SCRATCH", now(env), time.Time{}); !strings.Contains(skip, "no backup") {
+		t.Fatal(skip)
 	}
 }

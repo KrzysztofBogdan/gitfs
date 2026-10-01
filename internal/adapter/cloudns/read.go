@@ -117,7 +117,20 @@ func (s *session) geoTable(ctx context.Context) (*geoTable, error) {
 		ParentID flex `json:"parent_id"`
 		Code     string
 	}
-	if err := s.c.Do(ctx, "get-geodns-locations", nil, &ls); err != nil {
+	zone := s.geoZone
+	if zone == "" {
+		zs, err := s.zones(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, z := range zs {
+			if z.Kind == "geodns" {
+				zone = z.Name
+				break
+			}
+		}
+	}
+	if err := s.c.Do(ctx, "get-geodns-locations", url.Values{"domain-name": {zone}}, &ls); err != nil {
 		return nil, fmt.Errorf("GeoDNS locations: %w", err)
 	}
 	g := &geoTable{codeOf: map[string]string{}, idOf: map[string]string{}}
@@ -222,6 +235,9 @@ func (s *session) readZone(ctx context.Context, z string) (*xmltree.Node, error)
 	}
 	var geo *geoTable
 	if info.Zone == "geodns" {
+		if s.geoZone == "" {
+			s.geoZone = z
+		}
 		if geo, err = s.geoTable(ctx); err != nil {
 			return nil, wrap(err)
 		}

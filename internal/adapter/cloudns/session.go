@@ -16,12 +16,13 @@ import (
 )
 
 type session struct {
-	c      *Client
-	t      target
-	report func(adapter.Progress)
-	geo    *geoTable // nil until needed
-	ttls   []int
-	types  []string
+	c       *Client
+	t       target
+	report  func(adapter.Progress)
+	geo     *geoTable // nil until needed
+	geoZone string    // a GeoDNS zone: ClouDNS lists locations per zone
+	ttls    []int
+	types   []string
 }
 
 func newSession(t target) *session {
@@ -86,6 +87,9 @@ func (s *session) List(ctx context.Context, cursor string) (adapter.Listing, err
 			return adapter.Listing{}, fmt.Errorf("zone %s: %w", z.Name, err)
 		}
 		l.Resources = append(l.Resources, adapter.Resource{ID: z.Name, Path: zoneFile(z.Name), Version: v})
+		if z.Kind == "geodns" && s.geoZone == "" {
+			s.geoZone = z.Name
+		}
 		geo = geo || z.Kind == "geodns"
 		s.report(adapter.Progress{Phase: "pages", Done: i + 1, Total: len(zs), Item: z.Name})
 	}
