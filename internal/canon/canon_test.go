@@ -74,3 +74,27 @@ func TestRepeatedFieldSortedByKey(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// An element with Less sorts by it instead of SortKey: DNS records by name,
+// type, id, with new records (no id) after the ones they sort with.
+func TestSubSortedByLess(t *testing.T) {
+	less := func(a, b *xmltree.Node) bool {
+		an, _ := a.Attr("name")
+		bn, _ := b.Attr("name")
+		if an != bn {
+			return an < bn
+		}
+		at, _ := a.Attr("type")
+		bt, _ := b.Attr("type")
+		return at < bt
+	}
+	s := &schema.Schema{Root: "zone", Elems: []schema.Elem{
+		{Name: "record", Kind: schema.Sub, ID: "id", SortKey: "id", Less: less},
+	}}
+	root, _ := xmltree.ParseString(`<zone><record id="1" name="www" type="A">1</record><record name="api" type="TXT">t</record><record id="3" name="api" type="A">2</record></zone>`)
+	Normalize(root, s)
+	want := "<zone>\n  <record id=\"3\" name=\"api\" type=\"A\">2</record>\n  <record name=\"api\" type=\"TXT\">t</record>\n  <record id=\"1\" name=\"www\" type=\"A\">1</record>\n</zone>"
+	if got := xmltree.Print(root, 0); got != want {
+		t.Fatal(got)
+	}
+}

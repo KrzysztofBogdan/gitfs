@@ -80,7 +80,9 @@ func normalizeChildren(parent *xmltree.Node, elems []schema.Elem) {
 	for i, g := range groups {
 		kind := elems[i].Kind
 		sortable := kind == schema.Sub || kind == schema.Attachment || (kind == schema.Field && elems[i].Repeated)
-		if sortable && elems[i].SortKey != "" {
+		if sortable && elems[i].Less != nil {
+			sort.SliceStable(g, func(a, b int) bool { return elems[i].Less(g[a], g[b]) })
+		} else if sortable && elems[i].SortKey != "" {
 			key, idAttr := elems[i].SortKey, elems[i].ID
 			sort.SliceStable(g, func(a, b int) bool {
 				ka, oka := g[a].Attr(key)
