@@ -93,7 +93,7 @@ func loginIO(cmd *cobra.Command, flags map[string]string) adapter.LoginIO {
 
 func newAuthLogin() *cobra.Command {
 	var paste bool
-	var validity, base string
+	var base string
 	cmd := &cobra.Command{
 		Use:   "login <url>",
 		Short: "Guide through getting credentials for a remote and store them",
@@ -113,7 +113,7 @@ against the service and stores them in the system keyring.
 			if !ok {
 				return usage("no guided login for %s; use gfs auth set", ad.Name())
 			}
-			flags := map[string]string{"validity": validity, "base": base}
+			flags := map[string]string{"base": base}
 			if paste {
 				flags["paste"] = "true"
 			}
@@ -126,7 +126,6 @@ against the service and stores them in the system keyring.
 		},
 	}
 	cmd.Flags().BoolVar(&paste, "paste", false, "OVH: paste existing application key, secret and consumer key")
-	cmd.Flags().StringVar(&validity, "validity", "", "OVH: how long the consumer key lasts, e.g. 30d (default: unlimited)")
 	cmd.Flags().StringVar(&base, "base", "", "API base URL instead of the real service (tests)")
 	cmd.Flags().MarkHidden("base")
 	return cmd

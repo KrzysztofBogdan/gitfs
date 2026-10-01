@@ -217,7 +217,7 @@ type LoginIO struct {
 	ReadLine   func(prompt string) (string, error) // prompt printed, answer trimmed
 	ReadSecret func(prompt string) (string, error) // not echoed on a terminal
 	OpenURL    func(u string)                      // best effort; no-op without a terminal
-	Flags      map[string]string                   // paste, validity, base (tests)
+	Flags      map[string]string                   // paste, base (tests)
 }
 
 // LoginRefused is a Login the service refused (bad credentials, approval
