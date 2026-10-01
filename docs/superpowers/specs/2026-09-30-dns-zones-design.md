@@ -452,7 +452,8 @@ Safeguards for the write checks:
 - The zone must be named twice: `GFS_OVH_SCRATCH=z` and
   `GFS_DNS_WRITE_CONFIRM=z`; a mismatch or a missing value skips.
 - Before the first write the check saves a full backup of the zone
-  (provider export / BIND text plus the JSON of every element read in
+  (provider export / BIND text where the provider offers it, ClouDNS
+  refuses it for GeoDNS zones, plus the JSON of every element read in
   §6) to `$GFS_DNS_BACKUP_DIR/<provider>-<zone>-<timestamp>/`; no
   backup, no writes.
 - The checks only delete what they created (by id), never pre-existing
