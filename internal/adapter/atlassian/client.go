@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
+	"github.com/KrzysztofBogdan/gitfs/internal/httpx"
 )
 
 // Target is where and as whom a client talks.
@@ -76,9 +76,9 @@ func Code(err error) string {
 }
 
 const (
-	MaxAttempts  = 6
-	MaxTotalWait = 5 * time.Minute
-	MaxBackoff   = time.Minute
+	MaxAttempts  = httpx.MaxAttempts
+	MaxTotalWait = httpx.MaxTotalWait
+	MaxBackoff   = httpx.MaxBackoff
 )
 
 type Client struct {
@@ -93,19 +93,8 @@ type Client struct {
 }
 
 func New(t Target, product string) *Client {
-	return &Client{Target: t, Product: product, Header: http.Header{}, Sleep: sleepCtx, Now: time.Now,
+	return &Client{Target: t, Product: product, Header: http.Header{}, Sleep: httpx.SleepCtx, Now: time.Now,
 		OnWait: func(string) {}, hc: &http.Client{Timeout: 60 * time.Second}, xfer: &http.Client{}}
-}
-
-func sleepCtx(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
 }
 
 func (c *Client) NewRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
@@ -143,10 +132,7 @@ func (c *Client) apiError(resp *http.Response) error {
 	return ae
 }
 
-// send runs one request with retries. Atlassian answers 429 when an account
-// sends too much; the request was not processed, so any method is retried
-// after Retry-After. 502/503/504 and network errors are retried only for GET:
-// a write may already have been applied. build makes a fresh request per attempt.
+// send runs one request with the shared retry policy (httpx).
 func (c *Client) send(ctx context.Context, hc *http.Client, build func() (*http.Request, error)) (*http.Response, error) {
 	return c.sendRead(ctx, hc, false, build)
 }
@@ -154,86 +140,8 @@ func (c *Client) send(ctx context.Context, hc *http.Client, build func() (*http.
 // sendRead is send; read says the request only reads, whatever its method
 // (Jira search is a POST), so transient errors are retried as for GET.
 func (c *Client) sendRead(ctx context.Context, hc *http.Client, read bool, build func() (*http.Request, error)) (*http.Response, error) {
-	var waited time.Duration
-	for attempt := 1; ; attempt++ {
-		req, err := build()
-		if err != nil {
-			return nil, err
-		}
-		resp, err := hc.Do(req)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		method := req.Method
-		if read {
-			method = http.MethodGet
-		}
-		msg, retry := c.retryReason(method, resp, err)
-		if !retry || attempt == MaxAttempts {
-			return resp, err
-		}
-		d := c.retryWait(attempt, resp)
-		if waited+d > MaxTotalWait {
-			return resp, err
-		}
-		if resp != nil {
-			io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-			resp.Body.Close()
-		}
-		c.OnWait(fmt.Sprintf("%s, retrying in %s…", msg, d.Round(time.Second)))
-		if err := c.Sleep(ctx, d); err != nil {
-			return nil, err
-		}
-		waited += d
-	}
-}
-
-func (c *Client) retryReason(method string, resp *http.Response, err error) (string, bool) {
-	status := 0
-	if resp != nil {
-		status = resp.StatusCode
-	}
-	switch {
-	case status == http.StatusTooManyRequests:
-		if why := resp.Header.Get("RateLimit-Reason"); why != "" {
-			return "Rate limited by " + c.Product + " (" + why + ")", true
-		}
-		return "Rate limited by " + c.Product, true
-	case method != http.MethodGet:
-		return "", false
-	case err != nil:
-		return "Connection error (" + err.Error() + ")", true
-	case status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout:
-		return fmt.Sprintf("%s unavailable (HTTP %d)", c.Product, status), true
-	}
-	return "", false
-}
-
-// retryWait is Retry-After (seconds or an HTTP date) when the server sent it,
-// else the end of Jira's rate-limit window (X-RateLimit-Reset, ISO 8601, or
-// Beta-Retry-After, seconds), else exponential backoff from 1s with up to 25%
-// jitter, capped at MaxBackoff.
-func (c *Client) retryWait(attempt int, resp *http.Response) time.Duration {
-	if resp != nil {
-		if ra := resp.Header.Get("Retry-After"); ra != "" {
-			if n, err := strconv.Atoi(ra); err == nil && n >= 0 {
-				return time.Duration(n) * time.Second
-			}
-			if t, err := http.ParseTime(ra); err == nil {
-				return max(t.Sub(c.Now()), 0)
-			}
-		}
-		if reset := resp.Header.Get("X-RateLimit-Reset"); reset != "" {
-			if t, err := time.Parse(time.RFC3339, reset); err == nil {
-				return min(max(t.Sub(c.Now()), 0), MaxTotalWait)
-			}
-		}
-		if n, err := strconv.Atoi(resp.Header.Get("Beta-Retry-After")); err == nil && n >= 0 {
-			return time.Duration(n) * time.Second
-		}
-	}
-	d := min(time.Second<<(attempt-1), MaxBackoff)
-	return d + time.Duration(rand.Int64N(int64(d)/4+1))
+	r := &httpx.Retrier{Service: c.Product, Sleep: c.Sleep, Now: c.Now, OnWait: c.OnWait}
+	return r.Send(ctx, hc, read, build)
 }
 
 func (c *Client) Do(ctx context.Context, method, path string, in, out any) error {
