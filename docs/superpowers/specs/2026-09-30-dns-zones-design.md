@@ -447,6 +447,18 @@ round-trips unchanged) and `GFS_OVH_SCRATCH` / `GFS_CLOUDNS_SCRATCH`
 (a scratch zone: create, update, type change, delete, GeoDNS, failover,
 mail forward, redirect, DynHost, refresh; everything created is deleted).
 
+Safeguards for the write checks:
+
+- The zone must be named twice: `GFS_OVH_SCRATCH=z` and
+  `GFS_DNS_WRITE_CONFIRM=z`; a mismatch or a missing value skips.
+- Before the first write the check saves a full backup of the zone
+  (provider export / BIND text plus the JSON of every element read in
+  §6) to `$GFS_DNS_BACKUP_DIR/<provider>-<zone>-<timestamp>/`; no
+  backup, no writes.
+- The checks only delete what they created (by id), never pre-existing
+  elements, and leave a list of created ids in the backup directory if
+  cleanup fails.
+
 ### 10.4 Spike (done 2026-10-01, read-only)
 
 OVH: 20 zones, every endpoint of §6.1, schema `/1.0/domain.json`.
