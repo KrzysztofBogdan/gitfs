@@ -183,8 +183,7 @@ func (s *session) readZone(ctx context.Context, z string) (*xmltree.Node, error)
 		Name, Type, Zone, Status string
 	}
 	if err := s.c.Do(ctx, "get-zone-info", url.Values{"domain-name": {z}}, &info); err != nil {
-		var ae *APIError
-		if errors.As(err, &ae) {
+		if zoneMissing(err) {
 			return nil, fmt.Errorf("zone %s: %w: %w", z, adapter.ErrNotFound, err)
 		}
 		return nil, wrap(err)
@@ -290,6 +289,18 @@ func (s *session) readZone(ctx context.Context, z string) (*xmltree.Node, error)
 	return root, nil
 }
 
+// zoneMissing reports whether ClouDNS refused get-zone-info because the
+// zone does not exist; outages and limits are other errors, so a pull does
+// not take them for a deleted zone.
+func zoneMissing(err error) bool {
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.Status != 0 {
+		return false
+	}
+	d := strings.ToLower(ae.Description)
+	return strings.Contains(d, "domain-name") || strings.Contains(d, "not found") || strings.Contains(d, "does not exist")
+}
+
 // failoverNode is <failover record="id"> with every setting as an attribute
 // and backup_ip_N as <backup> children in order.
 func failoverNode(id string, st map[string]flex) *xmltree.Node {
@@ -311,6 +322,7 @@ func failoverNode(id string, st map[string]flex) *xmltree.Node {
 			n.SetAttr(attrName(k), dnsx.XMLText(string(v)))
 		}
 	}
+	sort.Slice(n.Attrs, func(i, j int) bool { return n.Attrs[i].Name < n.Attrs[j].Name })
 	sort.Slice(bs, func(i, j int) bool { return bs[i].i < bs[j].i })
 	for _, b := range bs {
 		n.Children = append(n.Children, withText(el("backup"), b.ip))

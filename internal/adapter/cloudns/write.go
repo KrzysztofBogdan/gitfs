@@ -20,11 +20,12 @@ import (
 )
 
 const (
-	warnNS     = "changes the zone's own NS records: a mistake makes the whole zone unreachable"
-	warnSOA    = "SOA timers decide how long resolvers keep stale answers; check the values before sending"
-	warnDNSOff = "if the registrar publishes a DS record for this domain, remove it first or the domain stops resolving"
-	warnDNSOn  = "once DNSSEC is active, publish the <ds> records shown in this file at the registrar"
-	warnOff    = "an inactive zone is not served: every name in it stops resolving"
+	warnNS       = "changes the zone's own NS records: a mistake makes the whole zone unreachable"
+	warnSOA      = "SOA timers decide how long resolvers keep stale answers; check the values before sending"
+	warnDNSOff   = "if the registrar publishes a DS record for this domain, remove it first or the domain stops resolving"
+	warnDNSOn    = "once DNSSEC is active, publish the <ds> records shown in this file at the registrar"
+	warnOff      = "an inactive zone is not served: every name in it stops resolving"
+	warnFailover = "a type change gives the record a new id, and ClouDNS removes its failover with the old one: add the failover again after this commit"
 )
 
 // geoTypes may carry a GeoDNS location.
@@ -135,6 +136,14 @@ type foChange struct {
 	node         *xmltree.Node
 }
 
+// foText is a failover as text with its attributes in name order: the
+// file's order and the API's (map) order must compare equal.
+func foText(n *xmltree.Node) string {
+	c := n.Clone()
+	sort.Slice(c.Attrs, func(i, j int) bool { return c.Attrs[i].Name < c.Attrs[j].Name })
+	return xmltree.Print(c, 0)
+}
+
 // foPlan compares the base and local failover sets by record id.
 func foPlan(local, base *xmltree.Node) []foChange {
 	lf, bf := failovers(local), failovers(base)
@@ -158,7 +167,7 @@ func foPlan(local, base *xmltree.Node) []foChange {
 			out = append(out, foChange{"activate", id, l})
 		case l == nil:
 			out = append(out, foChange{"deactivate", id, b})
-		case xmltree.Print(l, 0) != xmltree.Print(b, 0):
+		case foText(l) != foText(b):
 			out = append(out, foChange{"modify", id, l})
 		}
 	}
@@ -210,6 +219,11 @@ func describe(a *adapter.Action, local, base *xmltree.Node) {
 	}
 	if name == "record" && (isApexNS(ln) || isApexNS(bn)) {
 		a.Warning = warnNS
+	}
+	if name == "record" && a.Verb == "update" && bn != nil && ln != nil && attr(bn, "type") != attr(ln, "type") {
+		if _, ok := failovers(base)[attr(bn, "id")]; ok {
+			a.Warning = warnFailover
+		}
 	}
 }
 
@@ -528,13 +542,21 @@ func (s *session) Apply(ctx context.Context, req adapter.ApplyRequest) []adapter
 	return out
 }
 
-// recordParams are the add-record/mod-record parameters for a record.
-func (s *session) recordParams(z string, ln *xmltree.Node) url.Values {
+// recordParams are the add-record/mod-record parameters for a record:
+// the whole record, so a field removed locally is reset, not kept (no
+// status is active, no geo is the default location).
+func (s *session) recordParams(z string, ln *xmltree.Node, geodns bool) url.Values {
 	v := url.Values{"domain-name": {z}, "host": {dnsx.APIName(attr(ln, "name"))}, "record": {textOf(ln)}, "ttl": {attr(ln, "ttl")}}
-	if st := attr(ln, "status"); st != "" {
-		v.Set("status", st)
+	st := attr(ln, "status")
+	if st == "" {
+		st = "1"
 	}
-	if g := attr(ln, "geo"); g != "" && s.geo != nil {
+	v.Set("status", st)
+	if geodns && slices.Contains(geoTypes, attr(ln, "type")) && s.geo != nil {
+		g := attr(ln, "geo")
+		if g == "" {
+			g = "DEFAULT"
+		}
 		v.Set("geodns-location", s.geo.idOf[g])
 	}
 	for _, a := range extras(ln) {
@@ -560,10 +582,11 @@ func failoverParams(z, record string, n *xmltree.Node) url.Values {
 // (the delete half of a type change).
 func (s *session) apply(ctx context.Context, z string, a adapter.Action, local, base *xmltree.Node) (detail string, did bool, err error) {
 	name, ln, bn := elems(a, local, base)
+	geodns := attr(local, "kind") == "geodns"
 	zone := url.Values{"domain-name": {z}}
 	do := func(action string, v url.Values) error { return s.c.Do(ctx, action, v, nil) }
 	addRecord := func() (string, error) {
-		v := s.recordParams(z, ln)
+		v := s.recordParams(z, ln, geodns)
 		v.Set("record-type", attr(ln, "type"))
 		var resp struct {
 			Data struct {
@@ -644,7 +667,7 @@ func (s *session) apply(ctx context.Context, z string, a adapter.Action, local, 
 			}
 			return d, true, nil
 		}
-		v := s.recordParams(z, ln)
+		v := s.recordParams(z, ln, geodns)
 		v.Set("record-id", id)
 		return "", true, do("mod-record", v)
 	case "mail-forward create":

@@ -1,11 +1,13 @@
 package cloudns
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
+	"github.com/KrzysztofBogdan/gitfs/internal/canon"
 	"github.com/KrzysztofBogdan/gitfs/internal/changes"
 	"github.com/KrzysztofBogdan/gitfs/internal/envelope"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
@@ -293,5 +295,84 @@ func TestGeoFileReadOnly(t *testing.T) {
 		Actions: []adapter.Action{{Verb: "update", Group: "location"}}})
 	if len(rs) != 1 || rs[0].Err == nil || !strings.Contains(rs[0].Err.Error(), "read-only") {
 		t.Fatalf("%+v", rs)
+	}
+}
+
+// Removing status="0" makes a record active again, and removing geo moves
+// it to the default location: mod-record must say so, not omit the field.
+func TestApplyClearStatusAndGeo(t *testing.T) {
+	srv := site(t)
+	s := testSession(t, srv, selection{})
+	req := change(t, s, "qa1.pl", func(root *xmltree.Node) {
+		byID(root, "record", "16").DelAttr("status")
+		byID(root, "record", "12").DelAttr("geo")
+	})
+	if e := errsOf(s.Apply(bg, req)); len(e) > 0 {
+		t.Fatal(e)
+	}
+	z := srv.Zone("qa1.pl")
+	if z.Records["16"].Status != 1 || z.Records["12"].Geo != "1" {
+		t.Fatalf("status %d geo %q", z.Records["16"].Status, z.Records["12"].Geo)
+	}
+}
+
+// Changing one failover leaves the others alone, whatever order the API
+// answered their settings in.
+func TestFailoverDiffIgnoresAttrOrder(t *testing.T) {
+	for range 10 {
+		srv := site(t)
+		srv.SetFailover("qa1.pl", "13", map[string]string{"check_type": "1", "host": "a.qa1.pl", "path": "/", "port": "80",
+			"monitoring_region": "eu", "check_period": "60", "backup_ip_1": "198.51.100.9"})
+		s := testSession(t, srv, selection{})
+		req := change(t, s, "qa1.pl", func(root *xmltree.Node) {
+			canon.Normalize(root, zoneSchema) // as the file has it; the base is the API's order
+			for _, f := range root.ChildrenNamed("failover") {
+				if attr(f, "record") == "12" {
+					f.SetAttr("check-period", "120")
+				}
+			}
+		})
+		if len(req.Actions) != 1 || req.Actions[0].Detail != "modify failover on record 12" {
+			t.Fatalf("%+v", req.Actions)
+		}
+		if e := errsOf(s.Apply(bg, req)); len(e) > 0 || strings.Join(srv.Writes(), " ") != "failover-modify" {
+			t.Fatal(e, srv.Writes())
+		}
+	}
+}
+
+// Only a zone ClouDNS says is missing is "not found"; a refusal for another
+// reason (an outage, a limit) is an error, so pull does not drop the file.
+func TestZoneInfoErrorIsNotNotFound(t *testing.T) {
+	srv := site(t)
+	s := testSession(t, srv, selection{})
+	if _, err := s.Fetch(bg, "nope.pl"); !errors.Is(err, adapter.ErrNotFound) {
+		t.Fatalf("unknown zone: %v", err)
+	}
+	srv.Fail["get-zone-info"] = "Temporary server error, please try again later."
+	if _, err := s.Fetch(bg, "qa1.pl"); err == nil || errors.Is(err, adapter.ErrNotFound) {
+		t.Fatalf("an outage must not read as a deleted zone: %v", err)
+	}
+}
+
+// A type change gives the record a new id, and ClouDNS drops its failover
+// with the old one: the action says so.
+func TestTypeChangeWarnsAboutFailover(t *testing.T) {
+	srv := site(t)
+	s := testSession(t, srv, selection{})
+	req := change(t, s, "qa1.pl", func(root *xmltree.Node) {
+		r := byID(root, "record", "12")
+		r.SetAttr("type", "CNAME")
+		r.DelAttr("geo")
+		setText(r, "api2.qa1.pl")
+	})
+	var w string
+	for _, a := range req.Actions {
+		if a.Target == "record[id=12]" {
+			w = a.Warning
+		}
+	}
+	if !strings.Contains(w, "failover") {
+		t.Fatalf("warning %q", w)
 	}
 }
