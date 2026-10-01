@@ -49,7 +49,7 @@ type record struct {
 }
 
 type Remote struct {
-	FailVerb     map[string]error // keyed by verb, or verb+" "+target; "download" fails Download
+	FailVerb     map[string]error // keyed by verb, or verb+" "+target; "download" fails Download, "list" List
 	LockFailures int              // Apply returns ErrLock this many times
 	Calls        []string         // "verb path" per executed action ("verb file" for attachments)
 	Published    []string         // "path channel"
@@ -240,6 +240,9 @@ func (s session) Close() error { return nil }
 
 func (s session) List(_ context.Context, cursor string) (adapter.Listing, error) {
 	s.r.Cursors = append(s.r.Cursors, cursor)
+	if err := s.r.FailVerb["list"]; err != nil {
+		return adapter.Listing{}, err
+	}
 	l := adapter.Listing{Full: !s.r.Partial, FullDirs: s.r.FullDirs, Cursor: "c1"}
 	for id, rec := range s.r.recs {
 		res := *s.r.resource(id, rec)

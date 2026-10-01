@@ -40,7 +40,10 @@ func Clone(ctx context.Context, ad adapter.Adapter, sess adapter.Session, rawURL
 	l, err := sess.List(ctx, "")
 	if err != nil {
 		env.report(adapter.Progress{Phase: "done"})
-		return nil, err
+		return nil, fmt.Errorf("clone stopped while listing: %w\nnothing was fetched; run \"gfs pull\" in %s to retry, or delete it", err, dir)
+	}
+	stopped := func(err error, n int) error {
+		return fmt.Errorf("clone stopped after %d of %d resources: %w\n%s keeps them; run \"gfs pull\" in %s to fetch the rest", n, len(l.Resources), err, dir, dir)
 	}
 	n := 0
 	for i, r := range l.Resources {
@@ -51,11 +54,11 @@ func Clone(ctx context.Context, ad adapter.Adapter, sess adapter.Session, rawURL
 		}
 		if err != nil {
 			env.report(adapter.Progress{Phase: "done"})
-			return nil, fmt.Errorf("fetch %s: %w", r.ID, err)
+			return nil, stopped(fmt.Errorf("fetch %s: %w", r.ID, err), n)
 		}
 		if err := env.Store(res, ""); err != nil {
 			env.report(adapter.Progress{Phase: "done"})
-			return nil, err
+			return nil, stopped(err, n)
 		}
 		n++
 	}
