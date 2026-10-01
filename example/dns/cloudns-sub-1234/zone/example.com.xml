@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <zone name="example.com" type="master" kind="geodns">
+      <soa primary="gns1.cloudns.net" admin="support@cloudns.net" refresh="7200" retry="1800" expire="1209600" ttl="3600" serial="2026092802"/>
+      <dnssec status="enabled">
+        <ds key-tag="12626" algorithm="13" digest-type="2">B156B91878FD9A73617366A77B57B7053DB6DEEEC805CC8EE9FA8711DB08CC62</ds>
+      </dnssec>
+      <active>true</active>
+      <record id="21" name="@" type="CAA" ttl="3600" caa-flag="0" caa-type="issue">letsencrypt.org</record>
+      <record id="11" name="@" type="MX" ttl="3600" priority="10">mx1.example.com</record>
+      <record id="499153689" name="@" type="NS" ttl="3600">gns1.cloudns.net</record>
+      <record id="15" name="_sip._tcp" type="SRV" ttl="3600" priority="0" weight="5" port="5060">sip.example.com</record>
+      <record id="12" name="api" type="A" ttl="60" geo="EUR">203.0.113.20</record>
+      <record id="13" name="api" type="A" ttl="60">192.0.2.1</record>
+      <record name="api" type="A" ttl="60" geo="NAM">198.51.100.20</record>
+      <record id="20" name="go" type="WR" ttl="3600" redirect-type="301">https://example.com/landing</record>
+      <failover record="12" check-type="17" host="api.example.com" monitoring-region="eu" path="/health">
+        <backup>198.51.100.7</backup>
+      </failover>
+      <mail-forward id="7" box="info" destination="me@example.com"/>
+    </zone>
+  </content>
+</gfs>

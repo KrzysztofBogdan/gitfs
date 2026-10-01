@@ -43,6 +43,7 @@ type Action struct {
 	Target   string // "" for the resource itself, else e.g. comment[id=7] or comment[2]
 	Group    string // update of a field group: element name
 	Detail   string // human-readable resolved action
+	Warning  string // printed before the action's ask and in a dry run, e.g. what a DNSSEC change can break
 	From, To string // move
 	Params   map[string]string
 	File     string // attachment actions: sidecar path of the bytes; "" for resource actions
@@ -92,6 +93,9 @@ type ApplyRequest struct {
 	IDByPath func(path string) (string, bool)
 	Open     func(rel string) (io.ReadCloser, error) // reads the sidecar file named by Action.File
 	Files    []string                                // explicit verbs: the resource's sidecar files
+	// Secret reads a secret without echo (a DynHost login's password);
+	// nil without a terminal.
+	Secret func(prompt string) (string, error)
 }
 
 type Result struct {
@@ -101,6 +105,9 @@ type Result struct {
 	ID      string // create: new identity
 	Detail  string // e.g. "v2 -> v3"
 	Version string // attachment create/update: the attachment's new version
+	// Partial: the action failed after changing the remote (a DNS type change
+	// whose delete ran and create failed); the engine re-reads the resource.
+	Partial bool
 }
 
 // AttachmentInfo describes downloaded attachment bytes.
@@ -132,6 +139,13 @@ type Session interface {
 	Check(ctx context.Context, req ApplyRequest) []Result
 	Download(ctx context.Context, resourceID, attachmentID string, w io.Writer) (AttachmentInfo, error)
 	Close() error
+}
+
+// BaseDescriber is implemented by adapters whose descriptions need the
+// remote's copy too (a DNS record delete names the record it removes).
+// The engine calls it instead of Describe when the resource has a base.
+type BaseDescriber interface {
+	DescribeBase(a *Action, local, base *Resource)
 }
 
 // Identified is implemented by sessions that know which account they act as.
@@ -190,3 +204,25 @@ type AvailableField struct {
 	Required bool
 	Allowed  []string // shown when there are at most 8
 }
+
+// Loginer is implemented by adapters that guide the user to credentials for
+// a remote and store them (gfs auth login, DNS spec §8).
+type Loginer interface {
+	Login(ctx context.Context, u *url.URL, io LoginIO) error
+}
+
+// LoginIO is the terminal a Loginer talks through.
+type LoginIO struct {
+	Out        io.Writer
+	ReadLine   func(prompt string) (string, error) // prompt printed, answer trimmed
+	ReadSecret func(prompt string) (string, error) // not echoed on a terminal
+	OpenURL    func(u string)                      // best effort; no-op without a terminal
+	Flags      map[string]string                   // paste, base (tests)
+}
+
+// LoginRefused is a Login the service refused (bad credentials, approval
+// not given): gfs exits 1, not 2.
+type LoginRefused struct{ Err error }
+
+func (e *LoginRefused) Error() string { return e.Err.Error() }
+func (e *LoginRefused) Unwrap() error { return e.Err }

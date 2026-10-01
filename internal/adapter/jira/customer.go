@@ -38,6 +38,15 @@ func (*CustomerAdapter) PathModel() adapter.PathModel { return adapter.Flat }
 func (*CustomerAdapter) Verbs() []adapter.Verb        { return nil }
 func (*CustomerAdapter) DefaultDir(u *url.URL) string { return defaultDir(u) }
 
+// Login guides a customer to an Atlassian API token (DNS spec §8.3).
+func (*CustomerAdapter) Login(ctx context.Context, u *url.URL, io adapter.LoginIO) error {
+	n, err := normalize(u)
+	if err != nil {
+		return err
+	}
+	return atlassian.Login(ctx, n.Hostname(), io)
+}
+
 func (*CustomerAdapter) Normalize(u *url.URL) (string, error) {
 	n, err := normalize(u)
 	if err != nil {
@@ -96,8 +105,9 @@ func openCustomer(ctx context.Context, t target) (*custSession, error) {
 		desks: map[string]*desk{}, reg: newRegistry(), report: func(adapter.Progress) {}}
 	s.c.Header.Set("X-ExperimentalApi", "opt-in")
 	s.c.OnWait = func(msg string) { s.report(adapter.Progress{Phase: "wait", Item: msg}) }
+	s.c.LoginHint = "gfs auth login jira+customer://" + t.host
 	if err := s.resolveDesks(ctx); err != nil {
-		return nil, authHint(err, t)
+		return nil, err
 	}
 	return s, nil
 }

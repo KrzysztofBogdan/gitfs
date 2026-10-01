@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gfs>
+  <content>
+    <geodns name=".geodns">
+      <location code="DEFAULT" name="Default"/>
+      <location code="EUR" name="Europe" parent="DEFAULT"/>
+      <location code="NAM" name="North America" parent="DEFAULT"/>
+      <location code="US" name="United States" parent="NAM"/>
+    </geodns>
+  </content>
+</gfs>

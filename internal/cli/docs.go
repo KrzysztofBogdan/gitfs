@@ -3,7 +3,9 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/cloudns"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/jira"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/ovh"
 	"io/fs"
 	"sort"
 	"strings"
@@ -28,6 +30,7 @@ func helpTopics() []*cobra.Command {
 		{Use: "start", Short: "Overview of gfs commands, files, policy and credentials", Long: doc("start.md")},
 		{Use: "confluence", Short: "Confluence Cloud: URL, layout, page files, what each change does", Long: doc("docs/confluence.md")},
 		{Use: "jira", Short: "Jira Cloud and service desk portals: URLs, files, transitions, what each change does", Long: doc("docs/jira.md")},
+		{Use: "dns", Short: "DNS zones at OVH and ClouDNS: URLs, credentials, zone files, what each change does", Long: doc("docs/dns.md")},
 		{Use: "confluence-storage", Short: "Verified Confluence storage-format examples for page bodies", Long: doc("docs/confluence/storage.md")},
 	}
 }
@@ -50,8 +53,12 @@ func newSchema() *cobra.Command {
 				fmt.Fprint(cmd.OutOrStdout(), confluence.EmbeddedVocabulary().RelaxNG())
 			case "jira":
 				fmt.Fprint(cmd.OutOrStdout(), jira.RelaxNG())
+			case "ovh":
+				fmt.Fprint(cmd.OutOrStdout(), ovh.RelaxNG())
+			case "cloudns":
+				fmt.Fprint(cmd.OutOrStdout(), cloudns.RelaxNG())
 			default:
-				return usage("unknown adapter %q: want confluence or jira", args[0])
+				return usage("unknown adapter %q: want confluence, jira, ovh or cloudns", args[0])
 			}
 			return nil
 		},

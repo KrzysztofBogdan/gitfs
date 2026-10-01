@@ -1,7 +1,11 @@
 // Package schema declares the shape of an adapter's resource root.
 package schema
 
-import "slices"
+import (
+	"slices"
+
+	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
+)
 
 type Kind int
 
@@ -19,14 +23,17 @@ type Attr struct {
 }
 
 type Elem struct {
-	Name      string
-	Kind      Kind
-	Repeated  bool     // Field only
-	Item      string   // List only: item element name
-	Sorted    bool     // List only: items are unordered, sort by text
-	Attrs     []Attr   // declared attributes in canonical order
-	ID        string   // Sub, Attachment: identity attribute
-	SortKey   string   // Sub, Attachment, repeated Field: attribute to sort by
+	Name     string
+	Kind     Kind
+	Repeated bool   // Field only
+	Item     string // List only: item element name
+	Sorted   bool   // List only: items are unordered, sort by text
+	Attrs    []Attr // declared attributes in canonical order
+	ID       string // Sub, Attachment: identity attribute
+	SortKey  string // Sub, Attachment, repeated Field: attribute to sort by
+	// Less, when set, orders a Sub or repeated Field instead of SortKey
+	// (e.g. DNS records by name, type, id). It must be a strict weak order.
+	Less      func(a, b *xmltree.Node) bool
 	Children  []Elem   // Sub only: declared nested elements (e.g. reply)
 	BodyTypes []string // Body only: allowed values of the type attribute
 

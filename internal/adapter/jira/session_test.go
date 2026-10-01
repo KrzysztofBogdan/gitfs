@@ -107,7 +107,7 @@ func TestOpenSelection(t *testing.T) {
 	}
 	srv.Fail["GET /rest/api/3/project/search"] = 401
 	_, err := openSession(bg, target{base: srv.URL, host: "acme.atlassian.net", email: "me@x.com"})
-	if err == nil || !strings.HasSuffix(err.Error(), "; check the token with gfs auth set me@x.com --host acme.atlassian.net") {
+	if err == nil || !strings.HasSuffix(err.Error(), " (run gfs auth login jira://acme.atlassian.net)") {
 		t.Fatalf("err %v", err)
 	}
 }

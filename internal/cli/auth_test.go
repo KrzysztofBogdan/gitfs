@@ -141,3 +141,60 @@ func TestAuthAloginOnly(t *testing.T) {
 	}
 	mustContain(t, out, "kb@x.com is stored by alogin, not gfs; nothing removed")
 }
+
+func TestAuthLoginAtlassian(t *testing.T) {
+	authEnv(t)
+	srv := cftest.New()
+	defer srv.Close()
+	srv.Accounts = map[string]string{"me@x.com": "good"}
+	out, code := gfsIn(t, "me@x.com\ngood\n", "auth", "login", "confluence://acme.atlassian.net", "--base", srv.URL)
+	if code != 0 {
+		t.Fatal(out)
+	}
+	mustContain(t, out, "https://id.atlassian.com/manage-profile/security/api-tokens", `"Create API token"`,
+		"verified: Me on acme.atlassian.net", "stored: atlassian:me@x.com", "default for acme.atlassian.net: me@x.com")
+	if strings.Contains(out, "good") {
+		t.Fatalf("token echoed:\n%s", out)
+	}
+	// again: the remembered email is the default, an empty answer takes it
+	out, code = gfsIn(t, "\ngood\n", "auth", "login", "jira://acme.atlassian.net", "--base", srv.URL)
+	if code != 0 {
+		t.Fatal(out)
+	}
+	mustContain(t, out, "Email [me@x.com]:", "verified: Me on acme.atlassian.net")
+	out, code = gfsIn(t, "me@x.com\nbad\n", "auth", "login", "jira://acme.atlassian.net", "--base", srv.URL)
+	if code != 1 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	mustContain(t, out, "verify on acme.atlassian.net")
+}
+
+func TestAuthLoginUnsupported(t *testing.T) {
+	authEnv(t)
+	out, code := gfsIn(t, "", "auth", "login", "fake://x")
+	if code != 2 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	mustContain(t, out, "no guided login for fake")
+}
+
+func TestAuthEntriesListRm(t *testing.T) {
+	authEnv(t)
+	s := creds.Store{Dirs: creds.DefaultDirs()}
+	if err := s.SetEntry("ovh:eu", `{"appSecret":"sekrit"}`); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := gfsIn(t, "", "auth", "list")
+	mustContain(t, out, "ovh:eu")
+	if strings.Contains(out, "sekrit") {
+		t.Fatalf("list printed the secret:\n%s", out)
+	}
+	out, code := gfsIn(t, "", "auth", "rm", "ovh://eu")
+	if code != 0 {
+		t.Fatal(out)
+	}
+	mustContain(t, out, "removed: ovh:eu")
+	if _, code = gfsIn(t, "", "auth", "rm", "ovh://eu"); code != 1 {
+		t.Fatal("second rm must fail")
+	}
+}

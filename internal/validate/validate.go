@@ -70,6 +70,14 @@ func children(n, ref *xmltree.Node, elems []schema.Elem) []error {
 			}
 		}
 		switch e.Kind {
+		case schema.Field:
+			if !e.Repeated {
+				var r *xmltree.Node
+				if ref != nil {
+					r = ref.Child(c.Name)
+				}
+				errs = append(errs, readOnly("<"+c.Name+">", c, r, e.Attrs)...)
+			}
 		case schema.List:
 			for _, it := range c.Elements() {
 				if it.Name != e.Item {

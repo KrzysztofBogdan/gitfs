@@ -21,6 +21,7 @@ import (
 type CommitOpts struct {
 	DryRun  bool
 	Allow   map[string]bool
+	Force   bool // every ask counts as allow; deny still refuses
 	NoMerge bool
 	Filter  func(string) bool
 }
@@ -102,7 +103,7 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		}
 		return ci < cj
 	})
-	d := &policy.Decider{Policy: pol, Allowed: o.Allow, Prompt: e.Prompt}
+	d := &policy.Decider{Policy: pol, Allowed: o.Allow, Force: o.Force, Prompt: e.Prompt}
 	var r Report
 	for _, fc := range cs {
 		var err error
@@ -183,7 +184,7 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 		case level == policy.Deny:
 			mark = "[deny]"
 			r.Denied++
-		case level == policy.Ask && !d.Allowed[a.Class]:
+		case d.Asks(a.Class):
 			mark = "[ask]"
 			if d.Prompt == nil {
 				r.Denied++
@@ -203,6 +204,9 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 			detail = checks[i].Detail // what Check resolved the action to
 		}
 		e.line(a.Verb, actPath(fc, a), a.To, "would run", strings.TrimSpace(detail+"  "+mark))
+		if a.Warning != "" {
+			fmt.Fprintf(e.Out, "    ⚠ %s\n", a.Warning)
+		}
 	}
 }
 
@@ -219,7 +223,14 @@ func (e *Env) commitFile(ctx context.Context, fc changes.FileChange, d *policy.D
 	}
 	for _, a := range fc.Actions {
 		p := actPath(fc, a)
-		if run, reason := d.Decide(a.Class, fmt.Sprintf("%s %s ?", a.Verb, p)); !run {
+		if a.Warning != "" {
+			fmt.Fprintf(e.Out, "    ⚠ %s\n", a.Warning)
+		}
+		q := fmt.Sprintf("%s %s ?", a.Verb, p)
+		if a.Detail != "" {
+			q = fmt.Sprintf("%s %s  %s ?", a.Verb, p, a.Detail)
+		}
+		if run, reason := d.Decide(a.Class, q); !run {
 			r.Denied++
 			e.line(a.Verb, p, "", "denied", reason)
 			e.Log(a.Verb, p, "", "denied", reason)
@@ -285,7 +296,7 @@ func (e *Env) commitFile(ctx context.Context, fc changes.FileChange, d *policy.D
 			local = remote
 		}
 		req := adapter.ApplyRequest{Local: local, Base: remote, Actions: acts, IDByPath: e.IDByPath,
-			Open: e.open, Files: e.sidecarFiles(fc)}
+			Open: e.open, Files: e.sidecarFiles(fc), Secret: e.ReadSecret}
 		if remote != nil {
 			req.Lock = remote.Version
 		}
@@ -383,7 +394,11 @@ func (e *Env) finish(ctx context.Context, fc changes.FileChange, content *xmltre
 			e.Log(a.Verb, p, np, outcome, strings.TrimSpace(target+" "+detail))
 		}
 	}
-	if len(failed) == len(results) {
+	partial := false
+	for _, f := range failed {
+		partial = partial || f.Partial
+	}
+	if len(failed) == len(results) && !partial {
 		report("")
 		if fc.Local == nil { // deleted file: nothing to annotate
 			return nil
@@ -467,8 +482,12 @@ func keepLocal(wb, local *xmltree.Node, failed []adapter.Result, s *schema.Schem
 				}
 			}
 		case "update":
-			if old, nw := validate.FindSub(wb, name, e.ID, id), validate.FindSub(local, name, e.ID, id); old != nil && nw != nil {
+			old, nw := validate.FindSub(wb, name, e.ID, id), validate.FindSub(local, name, e.ID, id)
+			switch {
+			case old != nil && nw != nil:
 				*old = *nw.Clone()
+			case nw != nil: // gone on the remote (a delete whose create failed): keep it as new
+				wb.Children = append(wb.Children, asNew(nw, e))
 			}
 		case "delete":
 			old := validate.FindSub(wb, name, e.ID, id)
@@ -481,6 +500,19 @@ func keepLocal(wb, local *xmltree.Node, failed []adapter.Result, s *schema.Schem
 			wb.Children = kept
 		}
 	}
+}
+
+// asNew is a copy of a sub without its identity and read-only attributes,
+// so a commit creates it.
+func asNew(n *xmltree.Node, e *schema.Elem) *xmltree.Node {
+	c := n.Clone()
+	c.DelAttr(e.ID)
+	for _, a := range e.Attrs {
+		if a.ReadOnly {
+			c.DelAttr(a.Name)
+		}
+	}
+	return c
 }
 
 func replaceGroup(dst, src *xmltree.Node, name string) {

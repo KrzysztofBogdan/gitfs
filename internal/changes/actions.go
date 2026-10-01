@@ -86,8 +86,13 @@ func ResolveActions(ad adapter.Adapter, base *xmltree.Node, local *envelope.Doc,
 			acts = append(acts, adapter.Action{Verb: "move", From: basePath, To: path})
 		}
 	}
+	bd, withBase := ad.(adapter.BaseDescriber)
 	for i := range acts {
-		ad.Describe(&acts[i], res)
+		if withBase && base != nil {
+			bd.DescribeBase(&acts[i], res, &adapter.Resource{Path: basePath, Root: base})
+		} else {
+			ad.Describe(&acts[i], res)
+		}
 	}
 	return acts
 }

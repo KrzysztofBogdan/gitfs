@@ -67,3 +67,27 @@ func TestResource(t *testing.T) {
 		})
 	}
 }
+
+// A single Field's read-only attributes must match the remote's (DNS SOA
+// serial): a change, an addition or a removal is refused.
+func TestFieldReadOnlyAttrs(t *testing.T) {
+	s := &schema.Schema{Root: "zone", Elems: []schema.Elem{
+		{Name: "soa", Kind: schema.Field, Attrs: []schema.Attr{{Name: "ttl"}, {Name: "serial", ReadOnly: true}}},
+	}}
+	ref, _ := xmltree.ParseString(`<zone><soa ttl="1" serial="7"/></zone>`)
+	for in, ok := range map[string]bool{
+		`<zone><soa ttl="2" serial="7"/></zone>`: true,
+		`<zone><soa ttl="1" serial="8"/></zone>`: false,
+		`<zone><soa ttl="1"/></zone>`:            false,
+		`<zone/>`:                                true,
+	} {
+		n, _ := xmltree.ParseString(in)
+		if err := Resource(n, ref, s); (err == nil) != ok {
+			t.Errorf("%s: %v", in, err)
+		}
+	}
+	n, _ := xmltree.ParseString(`<zone><soa serial="1"/></zone>`)
+	if err := Resource(n, nil, s); err == nil {
+		t.Error("a new resource may not set a read-only attribute")
+	}
+}
