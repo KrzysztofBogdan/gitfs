@@ -1,0 +1,13 @@
+<pipeline id="api/pipelines/0b1c" number="1873" created="2026-10-05T14:22:31Z" completed="2026-10-05T14:30:02Z" version="completed:failed:2026-10-05T14:30:02Z">
+  <state>completed</state>
+  <result>failed</result>
+  <trigger type="push" account="712020:aa">Ana Nowak</trigger>
+  <target type="pullrequest" ref="feat/rate-limit" commit="a1b2c3d4e5f6" pipeline="pull-requests:**" pr="142"/>
+  <pr file="../pr/142 Add rate limiting.xml"/>
+  <duration build-seconds="402">451</duration>
+  <step id="s10" n="10" name="Ten" state="completed" result="successful"/>
+  <step id="s9" n="9" name="Nine" state="completed" result="failed" log-size="3">
+    <log>bad</log>
+  </step>
+  <steplog step="s10" name="10-ten.log" size="48213"/>
+</pipeline>

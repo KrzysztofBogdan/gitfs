@@ -1,0 +1,17 @@
+<pullrequest id="api/pr/142" number="142" created="2026-10-01T09:12:00Z" updated="2026-10-05T14:22:10Z" version="2026-10-05T14:22:10Z+3fa9c1d2">
+  <title>Add rate limiting</title>
+  <state>open</state>
+  <draft>false</draft>
+  <source branch="feat/rate-limit" commit="a1b2c3d4e5f6"/>
+  <destination branch="main" commit="0f9e8d7c6b5a"/>
+  <close-source-branch>true</close-source-branch>
+  <author account="712020:aa">Ana Nowak</author>
+  <reviewer account="712020:bb" state="approved">Bo Smith</reviewer>
+  <participant account="712020:dd" state="approved">Dee Park</participant>
+  <my-review>none</my-review>
+  <merge-commit/>
+  <description>Markdown.</description>
+  <build key="pipeline-1873" state="FAILED" url="https://bitbucket.org/x" run="../pipelines/1873.xml">Pipeline #1873</build>
+  <comment id="9012" account="712020:bb" author="Bo Smith" created="2026-10-02T00:00:00Z" updated="2026-10-02T00:00:00Z">General remark</comment>
+  <comment id="9013" account="712020:cc" author="Cy Lee" created="2026-10-03T00:00:00Z" updated="2026-10-03T00:00:00Z" path="src/limit.go" line="42" side="new" resolved="false">Off by one?</comment>
+</pullrequest>
