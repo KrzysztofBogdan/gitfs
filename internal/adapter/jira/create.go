@@ -17,7 +17,9 @@ import (
 type createPlan struct {
 	ic     *issueCtx
 	fields map[string]any
-	status string // the <status> the file asks for; "" keeps the initial one
+	status string           // the <status> the file asks for; "" keeps the initial one
+	steps  []step           // the file's <transitions> block, nil without one
+	own    []map[string]any // each step's own fields, encoded
 }
 
 // skipOnCreate are elements a new file may carry that are not create fields.
@@ -50,6 +52,18 @@ func (s *session) planCreate(ctx context.Context, req adapter.ApplyRequest) (*cr
 	}
 	ic := &issueCtx{p: p, t: t, set: fieldSet(t)}
 	enc := encoder{s: s, project: p.Key, dir: path.Dir(req.Local.Path), idByPath: req.IDByPath}
+	steps, err := chainOf(root)
+	if err != nil {
+		return nil, err
+	}
+	var own []map[string]any
+	for _, st := range steps {
+		o, err := s.stepFields(ctx, ic, enc, st)
+		if err != nil {
+			return nil, err
+		}
+		own = append(own, o)
+	}
 	fields := map[string]any{"project": map[string]any{"key": p.Key}, "issuetype": map[string]any{"id": t.ID}}
 	elems := make([]string, 0, len(elemFields))
 	for e := range elemFields {
@@ -97,7 +111,7 @@ func (s *session) planCreate(ctx context.Context, req adapter.ApplyRequest) (*cr
 		sort.Strings(missing)
 		return nil, fmt.Errorf("a new %s in %s needs %s", t.Name, p.Key, strings.Join(missing, ", "))
 	}
-	return &createPlan{ic: ic, fields: fields, status: textOf(child(root, "status"))}, nil
+	return &createPlan{ic: ic, fields: fields, status: textOf(child(root, "status")), steps: steps, own: own}, nil
 }
 
 // create makes the issue of a new file, then its status, new comments,
@@ -124,8 +138,11 @@ func (s *session) create(ctx context.Context, req adapter.ApplyRequest) []adapte
 	}
 	root := req.Local.Root
 	if plan.status != "" {
-		if err := s.createStatus(ctx, ic, req, plan.status); err != nil {
+		if err := s.createStatus(ctx, ic, req, plan); err != nil {
 			failed(adapter.Action{Verb: "update", Group: "status", Class: "transition"}, err)
+			if plan.steps != nil {
+				failed(adapter.Action{Verb: "update", Group: "transitions"}, err)
+			}
 		}
 	}
 	for _, name := range []string{"comment", "worklog", "link"} {
@@ -145,8 +162,9 @@ func (s *session) create(ctx context.Context, req adapter.ApplyRequest) []adapte
 	return out
 }
 
-// createStatus moves a new issue from its initial status to want.
-func (s *session) createStatus(ctx context.Context, ic *issueCtx, req adapter.ApplyRequest, want string) error {
+// createStatus moves a new issue from its initial status to the file's
+// <status>, through the file's <transitions> steps when it has them.
+func (s *session) createStatus(ctx context.Context, ic *issueCtx, req adapter.ApplyRequest, cp *createPlan) error {
 	var cur struct {
 		Fields struct {
 			Status struct {
@@ -157,9 +175,13 @@ func (s *session) createStatus(ctx context.Context, ic *issueCtx, req adapter.Ap
 	if err := s.c.Do(ctx, http.MethodGet, "/rest/api/3/issue/"+url.PathEscape(ic.id)+"?fields=status", nil, &cur); err != nil {
 		return err
 	}
-	plan := &editPlan{put: map[string]any{}, covers: map[int][]string{}, errs: map[int]error{}, status: 0}
 	enc := encoder{s: s, issueKey: ic.key, project: ic.p.Key}
-	s.planTransition(ctx, ic, enc, plan, want, cur.Fields.Status.Name, editInput{local: req.Local.Root})
+	if cp.steps != nil {
+		_, _, err := s.runChain(ctx, ic, enc, cp.steps, cp.own, cur.Fields.Status.Name, editInput{local: req.Local.Root})
+		return err
+	}
+	plan := &editPlan{put: map[string]any{}, covers: map[int][]string{}, errs: map[int]error{}, status: 0}
+	s.planTransition(ctx, ic, enc, plan, cp.status, cur.Fields.Status.Name, editInput{local: req.Local.Root})
 	if err := plan.errs[0]; err != nil {
 		return err
 	}

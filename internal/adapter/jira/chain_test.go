@@ -163,3 +163,27 @@ func TestTransitionChainDryRun(t *testing.T) {
 		t.Fatalf("%+v", out[0])
 	}
 }
+
+func TestCreateWithChain(t *testing.T) {
+	srv, s, _ := chainSite(t)
+	req := newFile(t, "sup/Licence stuck.xml", `<issue><type>Support</type><summary>Licence stuck</summary><status>Closed</status>
+<transitions><transition to="In Progress"/><transition to="Closed" name="Resolve this issue"><resolution>Done</resolution></transition></transitions></issue>`)
+	out := s.create(bg, req)
+	if len(out) != 1 || out[0].Err != nil {
+		t.Fatalf("%+v", out)
+	}
+	if is := srv.Issue(out[0].ID); is.Status != "Closed" {
+		t.Fatalf("%+v", is)
+	}
+	req = newFile(t, "sup/Second.xml", `<issue><type>Support</type><summary>Second</summary><status>Closed</status>
+<transitions><transition to="In Progress"/><transition to="Closed" name="Resolve this issue"/></transitions></issue>`)
+	out = s.create(bg, req)
+	if len(out) != 3 || out[0].Err != nil || out[1].Action.Group != "status" || out[2].Action.Group != "transitions" ||
+		!strings.HasPrefix(out[1].Err.Error(), `stopped at "In Progress" (step 2 of 2`) {
+		t.Fatalf("%+v", out)
+	}
+	if _, err := s.planCreate(bg, newFile(t, "sup/Bad.xml", `<issue><type>Support</type><summary>x</summary><status>Open</status><transitions><transition to="Closed"/></transitions></issue>`)); err == nil ||
+		err.Error() != `<status> Open does not match the last <transition to="Closed">` {
+		t.Fatal(err)
+	}
+}
