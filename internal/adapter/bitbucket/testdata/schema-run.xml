@@ -3,7 +3,6 @@
   <result>failed</result>
   <trigger type="push" account="712020:aa">Ana Nowak</trigger>
   <target type="pullrequest" ref="feat/rate-limit" commit="a1b2c3d4e5f6" pipeline="pull-requests:**" pr="142"/>
-  <pr file="../pr/142 Add rate limiting.xml"/>
   <duration build-seconds="402">451</duration>
   <step id="s10" n="10" name="Ten" state="completed" result="successful"/>
   <step id="s9" n="9" name="Nine" state="completed" result="failed" log-size="3">

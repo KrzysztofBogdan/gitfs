@@ -238,7 +238,6 @@ Comments with `deleted: true` are omitted.
   <result>failed</result>
   <trigger type="push" account="712020:aa…">Ana Nowak</trigger>
   <target type="pullrequest" ref="feat/rate-limit" commit="a1b2c3d4e5f6" pipeline="pull-requests:**" pr="142"/>
-  <pr file="../pr/142 Add rate limiting.xml"/>
   <duration build-seconds="402">451</duration>
   <step id="5d6e…" n="1" name="Build" image="golang:1.25" state="completed" result="successful" started="…" completed="…" duration="122" log-size="48213"/>
   <step id="7f80…" n="2" name="Lint" parallel="checks" state="completed" result="failed" started="…" completed="…" duration="31" log-size="612">
@@ -264,12 +263,16 @@ src/limit.go:42: …</log>
 * `target@type`: `branch`, `tag`, `commit`, `pullrequest`;
   `target@pipeline` is the selector: `default`, `branches:<pattern>`,
   `tags:<pattern>`, `custom:<name>`, `pull-requests:<pattern>`.
-* `pr@file`: relative path of the PR file when that PR is in the tree.
+* `target@pr` is the PR number. There is no link to the PR file: a
+  completed run is never fetched again, so a path would go stale when the
+  PR's title (and file name) changes.
 * `step` is a Sub (id `id`) ordered by `n` (Bitbucket's step order, numeric
   compare). `parallel` names the parallel group, `stage` the stage, when
   Bitbucket reports them.
 * Logs: a step's log of at most `pipelineLimitSize` bytes is its `<log>`
-  child (text, as returned, invalid UTF-8 replaced with U+FFFD). A bigger log
+  child: `\r\n` and lone `\r` become `\n`, ANSI escape sequences are removed,
+  other characters XML cannot hold and invalid UTF-8 become U+FFFD (the size
+  limit applies to the raw bytes). `gfs get` and `gfs tail` give raw bytes. A bigger log
   is a read-only attachment `<steplog step="<step id>" name="<n>-<slug>.log"
   size="…"/>` whose bytes `gfs get` writes to `<number>.files/<name>`.
   `log-size` is on every step that has a log.

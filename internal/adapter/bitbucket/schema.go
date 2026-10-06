@@ -45,7 +45,6 @@ var runElems = []schema.Elem{
 	{Name: "result", Kind: schema.Field},
 	{Name: "trigger", Kind: schema.Field, Attrs: ro("type", "account")},
 	{Name: "target", Kind: schema.Field, Attrs: ro("type", "ref", "commit", "pipeline", "pr")},
-	{Name: "pr", Kind: schema.Field, Attrs: ro("file")},
 	{Name: "duration", Kind: schema.Field, Attrs: ro("build-seconds")},
 	{Name: "step", Kind: schema.Sub, ID: "id", Less: stepLess,
 		Attrs:    ro("id", "n", "name", "image", "parallel", "stage", "state", "result", "started", "completed", "duration", "log-size"),

@@ -33,7 +33,7 @@ func TestMergedSchema(t *testing.T) {
 	for _, e := range s.Elems {
 		names = append(names, e.Name)
 	}
-	want := "title state result trigger target pr duration step steplog draft source destination close-source-branch author reviewer participant my-review merge-commit description build comment"
+	want := "title state result trigger target duration step steplog draft source destination close-source-branch author reviewer participant my-review merge-commit description build comment"
 	if got := strings.Join(names, " "); got != want {
 		t.Fatalf("order:\n%s\nwant\n%s", got, want)
 	}
