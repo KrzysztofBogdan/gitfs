@@ -1,11 +1,12 @@
 # gfs: getting started
 
-`gfs` mirrors a net service (Confluence and Jira today) as a directory of XML files.
+`gfs` mirrors a net service (Confluence, Jira, Bitbucket and DNS zones today) as a directory of XML files.
 You edit files; `gfs commit` makes the remote look like your working tree.
 The vocabulary is git's, but the remote is a live service, not a repository:
 there is no history graph, only the current remote state.
 
 Service details: [docs/confluence.md](docs/confluence.md), [docs/jira.md](docs/jira.md),
+[docs/bitbucket.md](docs/bitbucket.md) (pull requests and pipelines),
 [docs/dns.md](docs/dns.md) (OVH and ClouDNS zones).
 
 ## Install
@@ -21,6 +22,7 @@ INSTALL_DIR=/some/dir ./install.sh
 gfs auth set me@example.com --host acme.atlassian.net   # once per account
 gfs clone confluence://acme.atlassian.net          # every space; or .../ENG for one
 # or: gfs clone jira://acme.atlassian.net          # every project; or .../GEN for one
+# or: gfs clone bitbucket://bitbucket.org/acme      # pull requests and pipeline runs
 # or: gfs clone ovh://eu                            # DNS zones; cloudns://sub-1234 for ClouDNS
 cd acme
 vim "eng/Home/Architecture.xml"
@@ -52,12 +54,13 @@ current directory; no path means the whole tree.
 | `gfs log [-n <count>] [<path>...]` | What past commits did on the remote (`.gfs/log`). |
 | `gfs actions` | Verbs the remote understands and their policy. |
 | `gfs get <path>...` | Download attachment bytes on demand (a file, a page, or a directory). |
+| `gfs tail <file>` | Stream a running pipeline's logs (a Bitbucket run or PR file); exit 0 if it succeeds, 1 if it fails. |
 | `gfs auth ...` | Manage stored API tokens (see below). |
 | `gfs example <adapter> [<node>[/<variant>]]` | List or print body examples verified against the service. |
 | `gfs schema <adapter>` | Print a RELAX NG schema for the adapter's files (`xmllint --relaxng`). |
 
 Built-in docs: `gfs help start` (this page), `gfs help confluence`,
-`gfs help confluence-storage`, `gfs help jira`, `gfs help dns`.
+`gfs help confluence-storage`, `gfs help jira`, `gfs help bitbucket`, `gfs help dns`.
 
 ### commit flags
 
@@ -160,7 +163,7 @@ Tokens live in the system keyring, never in files. Tokens already stored by
 
 | command | what it does |
 |---------|--------------|
-| `gfs auth login <url>` | Guided: says where to get credentials for the remote (Jira, Confluence, OVH, ClouDNS), checks them and stores them. |
+| `gfs auth login <url>` | Guided: says where to get credentials for the remote (Jira, Confluence, Bitbucket, OVH, ClouDNS), checks them and stores them. |
 | `gfs auth set <email> [--host <host>]` | Store or replace the token (prompted without echo, or read from stdin). `--host` verifies it on that site first and makes the email the site's default. |
 | `gfs auth rm <email>` / `<url>` | Delete gfs's token for that email, or a remote's credentials (`gfs auth rm ovh://eu`). |
 | `gfs auth clear [--yes]` | Delete every token gfs stored. Asks unless `--yes`. |
@@ -169,6 +172,8 @@ Tokens live in the system keyring, never in files. Tokens already stored by
 An expired or revoked Atlassian token makes commands say `run gfs auth login <url>`.
 OVH and ClouDNS credentials are one keyring entry per remote (`ovh:eu`,
 `cloudns:sub-1234`), or environment variables in CI (`gfs help dns`).
+A Bitbucket token is scoped and differs from the Jira one: it is kept as
+`bitbucket:<email>` (`gfs help bitbucket`).
 
 Which Atlassian account a command uses, first match wins:
 
@@ -199,3 +204,6 @@ Which Atlassian account a command uses, first match wins:
 | 0 | everything succeeded |
 | 1 | an action failed, was denied, or conflicted |
 | 2 | usage or configuration error |
+
+`gfs tail` exits with the pipeline's result: 0 successful, 1 failed (or
+error, stopped, expired), 2 when it could not watch, 130 on Ctrl-C.

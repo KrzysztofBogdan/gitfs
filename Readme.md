@@ -194,7 +194,9 @@ Implemented: the shared core (XML file model, canonical printer, status/diff/com
 three-way merge, policy) and one adapter, **Confluence Cloud**, with attachments listed in every page and
 downloaded on demand ([attachments design](docs/superpowers/specs/2026-09-23-gfs-attachments-design.md)).
 
-Next: **Jira** ([design](docs/superpowers/specs/2026-09-29-jira-adapter-design.md)). Mail, Slack, DNS and X exist as examples in [`example/`](example/).
+Also implemented: **Jira** ([design](docs/superpowers/specs/2026-09-29-jira-adapter-design.md)), **DNS zones** at OVH and ClouDNS
+([design](docs/superpowers/specs/2026-09-30-dns-zones-design.md)), and **Bitbucket Cloud** pull requests and pipeline runs with
+`gfs tail` ([design](docs/superpowers/specs/2026-10-06-bitbucket-design.md)). Mail, Slack and X exist as examples in [`example/`](example/).
 
 
 ## Background
