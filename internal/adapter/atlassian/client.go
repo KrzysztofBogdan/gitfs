@@ -192,12 +192,23 @@ func (c *Client) DoRead(ctx context.Context, method, path string, in, out any) e
 	return c.do(ctx, true, method, path, in, out)
 }
 
+// DoHeader is Do that also returns the response status and headers (a
+// Bitbucket merge answers 202 with the task to poll in Location).
+func (c *Client) DoHeader(ctx context.Context, method, path string, in, out any) (int, http.Header, error) {
+	return c.doResp(ctx, false, method, path, in, out)
+}
+
 func (c *Client) do(ctx context.Context, read bool, method, path string, in, out any) error {
+	_, _, err := c.doResp(ctx, read, method, path, in, out)
+	return err
+}
+
+func (c *Client) doResp(ctx context.Context, read bool, method, path string, in, out any) (int, http.Header, error) {
 	var payload []byte
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
-			return err
+			return 0, nil, err
 		}
 		payload = b
 	}
@@ -213,20 +224,20 @@ func (c *Client) do(ctx context.Context, read bool, method, path string, in, out
 		return req, err
 	})
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return c.apiError(resp)
+		return resp.StatusCode, resp.Header, c.apiError(resp)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
-		return err
+		return resp.StatusCode, resp.Header, err
 	}
 	if out != nil && len(bytes.TrimSpace(data)) > 0 {
-		return json.Unmarshal(data, out)
+		return resp.StatusCode, resp.Header, json.Unmarshal(data, out)
 	}
-	return nil
+	return resp.StatusCode, resp.Header, nil
 }
 
 // Download streams the body of GET path into w; redirects are followed.

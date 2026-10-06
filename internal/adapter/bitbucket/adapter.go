@@ -41,6 +41,3 @@ func (*Adapter) Open(ctx context.Context, u *url.URL, cfg map[string]string) (ad
 	}
 	return newSession(t), nil
 }
-
-// Describe is filled in with commit (bitbucket spec §7.6).
-func (*Adapter) Describe(a *adapter.Action, local *adapter.Resource) { a.Class = a.Verb }
