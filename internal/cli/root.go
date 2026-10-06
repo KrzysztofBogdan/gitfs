@@ -69,7 +69,7 @@ func NewRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newClone(), newStatus(), newDiff(), newCommit(), newPull(), newResolve(), newLog(), newActions(), newGet(), newAuth(), newSchema(), newExample())
+	root.AddCommand(newClone(), newStatus(), newDiff(), newCommit(), newPull(), newResolve(), newLog(), newActions(), newGet(), newTail(), newAuth(), newSchema(), newExample())
 	root.AddCommand(helpTopics()...)
 	return root
 }
