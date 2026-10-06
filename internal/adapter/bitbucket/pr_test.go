@@ -73,7 +73,7 @@ func canonical(t *testing.T, n *xmltree.Node) string {
 func TestPRRoot(t *testing.T) {
 	in := prFixture(t)
 	got := prRoot(in)
-	want, err := xmltree.ParseString(strings.Replace(wantPR, "VERSION", prVersion(in), 1))
+	want, err := xmltree.ParseString(strings.Replace(wantPR, "VERSION", "2026-10-05T14:22:10Z", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,18 +82,6 @@ func TestPRRoot(t *testing.T) {
 	}
 	if err := validate.Resource(got, got.Clone(), mergedSchema); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestPRVersion(t *testing.T) {
-	in := prFixture(t)
-	v := prVersion(in)
-	if !strings.HasPrefix(v, "2026-10-05T14:22:10Z+") || prVersion(prFixture(t)) != v {
-		t.Fatal(v)
-	}
-	in.Statuses[0].State = "SUCCESSFUL"
-	if prVersion(in) == v {
-		t.Fatal("a status change moves the version")
 	}
 }
 

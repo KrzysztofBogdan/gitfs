@@ -1,9 +1,6 @@
 package bitbucket
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
@@ -63,7 +60,7 @@ var runURLRe = regexp.MustCompile(`results/(\d+)`)
 func prRoot(in prInput) *xmltree.Node {
 	p := in.PR
 	root := el("pullrequest", "id", prID(in.Repo, p.ID), "number", strconv.Itoa(p.ID), "created", stamp(p.CreatedOn),
-		"updated", stamp(p.UpdatedOn), "version", prVersion(in))
+		"updated", stamp(p.UpdatedOn), "version", stamp(p.UpdatedOn))
 	commit := func(c *apiCommit) string {
 		if c == nil {
 			return ""
@@ -139,20 +136,4 @@ func prRoot(in prInput) *xmltree.Node {
 		add(root, withText(n, c.Content.Raw))
 	}
 	return root
-}
-
-// prVersion is updated_on plus a digest of what can change without moving it
-// (bitbucket spec §6.3): statuses, comments, review states.
-func prVersion(in prInput) string {
-	h := sha256.New()
-	for _, st := range in.Statuses {
-		fmt.Fprintf(h, "s %s %s %s\x00", st.Key, st.State, st.Name)
-	}
-	for _, c := range in.Comments {
-		fmt.Fprintf(h, "c %d %s %t %t\x00", c.ID, c.UpdatedOn, c.Deleted, c.Resolution != nil)
-	}
-	for _, pa := range in.PR.Participants {
-		fmt.Fprintf(h, "p %s %s\x00", pa.User.AccountID, reviewState(pa))
-	}
-	return stamp(in.PR.UpdatedOn) + "+" + hex.EncodeToString(h.Sum(nil))[:8]
 }

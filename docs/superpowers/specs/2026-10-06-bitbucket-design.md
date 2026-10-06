@@ -24,7 +24,7 @@ the logs of a running pipeline.
 * `gfs clone bitbucket://bitbucket.org/<workspace>` clones every repository
   the account can read, narrowed by `filter`, `exclude`, `since`, `limit`.
 * Every PR in every state and every pipeline run, each in full detail
-  (clone may take hours on busy repos: §6.5).
+  (clone may take hours on busy repos: §6.6).
 * PR verbs are declarative: `<state>merged</state>` merges,
   `<my-review>approved</my-review>` approves.
 * Step logs up to `pipelineLimitSize` (default 1 KB) inline; bigger ones on
@@ -152,7 +152,7 @@ acme/
 ### 5.1 Pull request
 
 ```xml
-<pullrequest id="api-gateway/pr/142" number="142" created="2026-10-01T09:12:00Z" updated="2026-10-05T14:22:10Z" version="2026-10-05T14:22:10Z+3fa9c1d2">
+<pullrequest id="api-gateway/pr/142" number="142" created="2026-10-01T09:12:00Z" updated="2026-10-05T14:22:10Z" version="2026-10-05T14:22:10Z">
   <title>Add rate limiting</title>
   <state>open</state>
   <draft>false</draft>
@@ -175,7 +175,7 @@ acme/
 
 | element / attribute | owner | notes |
 |---|---|---|
-| root `id`, `number`, `created`, `updated`, `version` | service | `version` = `updated_on` + `+` + 8 hex digits of a digest of the builds and comments (§6.3) |
+| root `id`, `number`, `created`, `updated`, `version` | service | `version` = `updated_on` (§6.2 says how status-only changes are caught) |
 | `title` | user | |
 | `state` | user | `open`, `merged`, `declined`, `superseded`. Only `open` → `merged` / `declined` is an edit (§7.4); `superseded` is never written by the user |
 | `state@strategy`, `state@message` | user, only with `merged` | `merge_commit`, `squash`, `fast_forward`; omitted = the destination's default. Not written by gfs; dropped after a successful merge |
@@ -286,51 +286,57 @@ src/limit.go:42: …</log>
 narrowed by `filter`/`exclude`. Each listing call starts with this; it costs
 one request per 100 repositories.
 
-### 6.2 Full listing of a repository
+### 6.2 Listings are stubs
+
+`List` returns stubs (id, path, version; no content). The engine fetches
+each resource it does not have or whose version moved, one by one, saving
+the index as it goes: a clone stopped after hours resumes with `gfs pull`
+and fetches nothing twice. The PR and run JSON read while listing is kept
+for the session, so `Fetch` right after `List` does not read it again.
+
+* A PR stub's version is its `updated_on`; an **open** PR's stub has no
+  version, so it is fetched on every pull and the engine compares content.
+  That is how status-only and comment-only changes are caught.
+* A completed run's stub version is `completed:<result>:<completed_on>`
+  (the same as `Fetch` gives); a run not completed has none.
+
+### 6.3 Full listing of a repository
 
 Clone, `pull --full`, or a repository new to the selection:
 
-1. PRs: `GET …/pullrequests?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&sort=-updated_on&pagelen=50[&q=updated_on>=<since>]`,
-   following `next`, stopping at `limit`. For each PR:
-   `GET …/pullrequests/<id>/comments?pagelen=100` (paged) and
-   `GET …/pullrequests/<id>/statuses?pagelen=100`.
+1. PRs: `GET …/pullrequests?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&sort=-updated_on&pagelen=50[&q=updated_on >= "<since>"]`,
+   following `next`, stopping at `limit`.
 2. Runs: `GET …/pipelines/?sort=-created_on&pagelen=100`, stopping at
-   `limit` or a run created before `since`. For each run:
-   `GET …/pipelines/<uuid>/steps/?pagelen=100` and, per step that has
-   started, `GET …/steps/<uuid>/log` with `Range: bytes=0-<limit>` (§8.2).
+   `limit` or a run created before `since`.
 3. The repository folder goes in `Listing.FullDirs`.
 
-Every resource is returned in full (`Root` set).
+`Fetch` of a PR reads `…/pullrequests/<id>/comments?pagelen=100` (paged)
+and `…/statuses?pagelen=100` (plus the PR when it was not just listed). Of
+a run: `…/pipelines/<uuid>/steps/?pagelen=100` and, per step that has
+started, `…/steps/<uuid>/log` with `Range: bytes=0-<limit>` (§8.2).
 
-### 6.3 Incremental listing
+### 6.4 Incremental listing
 
 Per repository with a cursor:
 
-* PRs: the same PR listing with `q=updated_on > "<cursor.prs - 10 min>"`,
-  sorted `updated_on` ascending; each returned PR re-fetches comments and
-  statuses. In addition every **open** PR in the index re-fetches its
-  statuses (builds finishing do not bump `updated_on`), and, if the
-  real-site check (§11.4) shows comments do not bump `updated_on`, its
-  comments too. The engine skips entries whose `version` and path match the
-  index; the version digest is what makes a status-only change visible.
-* Runs: list newest first until a `build_number` at or below the cursor's
-  highest seen; then re-fetch (`GET …/pipelines/<uuid>` + steps + logs)
-  every indexed run whose `state` is not `completed`. A completed run is
-  never fetched again.
-* A pull with nothing new: 1 request per repository listing page, 1 PR
-  listing and 1 run listing per repository, 1 status request per open PR,
-  plus unfinished runs.
+* PRs: every open PR (`state=OPEN`, paged), then every PR with
+  `q=updated_on > "<cursor.prs - 10 min>"` sorted ascending.
+* Runs: newest first until a `build_number` at or below the cursor's
+  highest; then `GET …/pipelines/<uuid>` for every run the cursor recorded
+  as not completed, as a stub with its current version.
+* A pull with nothing new: per repository one open-PR listing, one updated
+  listing, one run listing, one request per unfinished run; then the
+  engine fetches each open PR (2 requests).
 
-### 6.4 Cursor
+### 6.5 Cursor
 
-`Listing.Cursor` is an opaque string encoding
-`{repo slug: {prs: <UTC time listing started>, run: <highest build_number>}}`.
-A repository missing from the map gets a full listing. A failed request
-fails the pull for that repository and its cursor entry is not advanced;
-other repositories keep their progress, so a stopped clone resumes with
-`gfs pull` (existing behaviour, clone spec).
+`Listing.Cursor` is JSON:
+`{"<repo>": {"prs": <time listing started>, "run": <highest build_number>, "running": {"<uuid>": <build_number>}}}`.
+A repository missing from it gets a full listing. A failed request fails
+the listing (the engine keeps the old cursor); a stopped clone resumes as
+§6.2 describes.
 
-### 6.5 Rate limits and duration
+### 6.6 Rate limits and duration
 
 Bitbucket allows 1,000 repository-data requests per hour for a user API
 token (up to 10,000 with workspace access tokens on large paid plans,
@@ -347,14 +353,15 @@ detail). Mitigations:
 * Requests are sequential (one in flight); parallelism would only reach the
   limit sooner.
 
-### 6.6 Selection changes and deletions
+### 6.7 Selection changes and deletions
 
-* A repository leaving the selection (config edited, deleted, access lost):
-  the ids of its indexed files go in `Listing.Deleted`.
+* A repository leaving the selection (config edited, deleted, access lost)
+  is put in `Listing.FullDirs` with no resources: the engine removes its
+  files (locally changed ones become conflicts).
 * PRs cannot be deleted in Bitbucket; runs removed by retention are still
   listed (*(verify)*); a 404 on `Fetch` returns `adapter.ErrNotFound`.
 
-### 6.7 `Fetch`
+### 6.8 `Fetch`
 
 PR: `GET …/pullrequests/<id>` + comments + statuses. Run: `GET
 …/pipelines/<uuid>` + steps + logs.
@@ -631,7 +638,7 @@ get` a big log; `gfs tail` a run that ends failed (exit 1, file written);
 * Read: clone one named repository with `limit=20`, round-trip every file
   through canon, `gfs get` one big log.
 * Measure and record in this spec: whether a comment and an approval bump
-  `updated_on` (§6.3); `Content-Range` total while a step runs; whether a
+  `updated_on` (§6.4: if not, closed PRs miss comment-only changes until pull --full); `Content-Range` total while a step runs; whether a
   running step's log is readable (§9.4); merge `202` behaviour; the
   pipelines `target.commit.hash` filter; scoped-token scope names; whether
   retention-expired runs are still listed.
