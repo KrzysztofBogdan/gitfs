@@ -50,11 +50,12 @@ the logs of a running pipeline.
 |---------|------|
 | `internal/adapter/bitbucket` (new) | the adapter (files in §2.1) |
 | `internal/adapter/bitbucket/bbtest` (new) | fake Bitbucket API |
-| `internal/adapter/atlassian` | `APIError.Message` learns Bitbucket's error shape `{"type":"error","error":{"message","detail","fields"}}`; `Client` gains a `Range` download (§8.2) and exposes the last `X-RateLimit-NearLimit` |
+| `internal/adapter/atlassian` | `APIError.Message` learns Bitbucket's error shape `{"type":"error","error":{"message","detail","fields"}}`; `Client` gains a `Range` download (§8.2), `DoHeader` (a merge's 202 `Location`), `HTTPClient`, and exposes the last `X-RateLimit-NearLimit`; `Email` exports the identity resolution |
 | `internal/adapter` | new optional interface `Tailer` (§9.4) |
 | `internal/policy` | defaults gain `merge = ask`, `decline = ask` |
 | `internal/cli` | registers the adapter; new `tail.go` (§9); `gfs help bitbucket` |
-| `internal/engine` | no change expected: flat path model, partial listings, read-only attachments, Advisor exist |
+| `internal/engine` | `PullOpts.IDs`: pull only named resources, keeping the cursor (`gfs tail` write-back) |
+| `internal/schema`, `internal/validate` | `Schema.Roots`: a schema may accept a second root element (the engine has one schema per adapter; Bitbucket's covers `<pullrequest>` and `<pipeline>`) |
 
 ### 2.1 Files in `internal/adapter/bitbucket`
 
