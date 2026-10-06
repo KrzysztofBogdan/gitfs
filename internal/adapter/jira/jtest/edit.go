@@ -72,6 +72,22 @@ func (s *Server) setField(is *Issue, f Field, raw json.RawMessage) string {
 			is.Reporter = acc
 		}
 		return ""
+	case "parent":
+		if v == nil {
+			delete(is.Fields, "parent")
+			return ""
+		}
+		m, _ := v.(map[string]any)
+		ref, _ := m["key"].(string)
+		if ref == "" {
+			ref, _ = m["id"].(string)
+		}
+		par := s.lookup(ref)
+		if par == nil {
+			return "Could not find issue by id or key."
+		}
+		is.Fields["parent"] = map[string]any{"id": par.ID, "key": par.Key}
+		return ""
 	}
 	if f.Type == "option" && v != nil {
 		m, _ := v.(map[string]any)

@@ -4,12 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/atlassian"
 )
+
+// pendingParent is a dry run's detail for a parent the same commit creates
+// first ("" otherwise).
+func pendingParent(req adapter.ApplyRequest, detail string) string {
+	f, ok := attr(child(req.Local.Root, "parent"), "file")
+	if !ok || req.IDByPath == nil {
+		return ""
+	}
+	if id, _ := req.IDByPath(path.Join(path.Dir(req.Local.Path), f)); id != adapter.Pending {
+		return ""
+	}
+	return strings.TrimSpace(detail + "  parent: " + f + " (created in this commit)")
+}
 
 func results(acts []adapter.Action) []adapter.Result {
 	out := make([]adapter.Result, len(acts))
@@ -99,6 +113,9 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 	switch i, verb := resourceVerb(req.Actions); verb {
 	case "create":
 		out[i].Err = s.checkCreate(ctx, req)
+		if out[i].Err == nil {
+			out[i].Detail = pendingParent(req, out[i].Action.Detail)
+		}
 		return out
 	case "delete":
 		out[i].Err = s.checkDelete(ctx, req.Base.ID)

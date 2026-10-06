@@ -3,9 +3,11 @@ package jira
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,6 +43,8 @@ type encoder struct {
 	s        *session
 	issueKey string // "" on create
 	project  string
+	dir      string                           // the issue file's folder, for <parent file>
+	idByPath func(path string) (string, bool) // nil: no file resolves
 }
 
 // user is the value of a people element (jira spec §5.7): its account, or
@@ -64,6 +68,23 @@ func (e encoder) user(ctx context.Context, n, base *xmltree.Node, assignable boo
 		return nil, fmt.Errorf("<%s>: %w", n.Name, err)
 	}
 	return map[string]any{"accountId": acc}, nil
+}
+
+// parentFile is the parent <parent file="…"/> names: the issue of that file
+// in this project folder, possibly created earlier in the same commit.
+func (e encoder) parentFile(file, key string) (any, error) {
+	if file == "" || key != "" {
+		return nil, errors.New(`<parent> takes a key or file="…", not both`)
+	}
+	if strings.Contains(file, "/") {
+		return nil, errors.New("<parent file> names a file in this project folder")
+	}
+	if e.idByPath != nil {
+		if id, ok := e.idByPath(path.Join(e.dir, file)); ok {
+			return map[string]any{"id": id}, nil
+		}
+	}
+	return nil, fmt.Errorf("parent file %s is not an issue in this tree", file)
 }
 
 func attr(n *xmltree.Node, name string) (string, bool) {
@@ -159,6 +180,9 @@ func (e encoder) system(ctx context.Context, group string, local, base *xmltree.
 	case "reporter":
 		return e.user(ctx, n, child(base, group), false)
 	case "parent":
+		if f, ok := attr(n, "file"); ok {
+			return e.parentFile(f, textOf(n))
+		}
 		if textOf(n) == "" {
 			return nil, nil
 		}

@@ -99,3 +99,52 @@ func TestDeleteIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPlanCreateParentFile(t *testing.T) {
+	srv, s := editSite(t)
+	srv.SetFields("GEN", "2",
+		jtest.Field{ID: "summary", Name: "Summary", Type: "string", Required: true},
+		jtest.Field{ID: "parent", Name: "Parent", Type: "issuelink", Required: true})
+	ids := map[string]string{"gen/Epic.xml": "10001", "gen/New epic.xml": adapter.Pending}
+	req := func(parent string) adapter.ApplyRequest {
+		r := newFile(t, "gen/Sub.xml", `<issue><type>Sub-task</type><summary>x</summary>`+parent+`</issue>`)
+		r.IDByPath = func(p string) (string, bool) { id, ok := ids[p]; return id, ok }
+		return r
+	}
+	plan := func(parent string) (any, error) {
+		p, err := s.planCreate(bg, req(parent))
+		if err != nil {
+			return nil, err
+		}
+		return p.fields["parent"], nil
+	}
+	if v, err := plan(`<parent file="Epic.xml"/>`); err != nil || v.(map[string]any)["id"] != "10001" {
+		t.Fatalf("%v %v", v, err)
+	}
+	if v, err := plan(`<parent>GEN-1</parent>`); err != nil || v.(map[string]any)["key"] != "GEN-1" {
+		t.Fatalf("%v %v", v, err)
+	}
+	for parent, want := range map[string]string{
+		`<parent file="Epic.xml">GEN-1</parent>`: `<parent> takes a key or file="…", not both`,
+		`<parent file=""/>`:                      `<parent> takes a key or file="…", not both`,
+		`<parent file="../ops/Epic.xml"/>`:       `<parent file> names a file in this project folder`,
+		`<parent file="Nope.xml"/>`:              `parent file Nope.xml is not an issue in this tree`,
+	} {
+		if _, err := plan(parent); err == nil || err.Error() != want {
+			t.Errorf("%s: %v, want %q", parent, err, want)
+		}
+	}
+	if out := s.Check(bg, req(`<parent file="New epic.xml"/>`)); out[0].Err != nil ||
+		!strings.Contains(out[0].Detail, "parent: New epic.xml (created in this commit)") {
+		t.Fatalf("%+v", out)
+	}
+	ad := &Adapter{}
+	if got := ad.DependsOn(req(`<parent file="Epic.xml"/>`).Local); len(got) != 1 || got[0] != "gen/Epic.xml" {
+		t.Fatal(got)
+	}
+	for _, p := range []string{`<parent>GEN-1</parent>`, `<parent file="a/b.xml"/>`, ``} {
+		if got := ad.DependsOn(req(p).Local); got != nil {
+			t.Errorf("%s: %v", p, got)
+		}
+	}
+}

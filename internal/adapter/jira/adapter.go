@@ -35,6 +35,19 @@ var (
 	_ adapter.Identified = (*session)(nil)
 )
 
+// DependsOn names the issue file an issue's <parent file="…"/> points at, so
+// commit creates that issue first.
+func (*Adapter) DependsOn(local *adapter.Resource) []string {
+	if local.Root == nil || local.Root.Name != "issue" {
+		return nil
+	}
+	f, ok := attr(child(local.Root, "parent"), "file")
+	if !ok || f == "" || strings.Contains(f, "/") {
+		return nil
+	}
+	return []string{path.Join(path.Dir(local.Path), f)}
+}
+
 func (*Adapter) Name() string                 { return "jira" }
 func (*Adapter) Schemes() []string            { return []string{"jira"} }
 func (*Adapter) Schema() *schema.Schema       { return issueSchema }

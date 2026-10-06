@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 
@@ -48,7 +49,7 @@ func (s *session) planCreate(ctx context.Context, req adapter.ApplyRequest) (*cr
 		return nil, fmt.Errorf("%s has no issue type %q; types: %s", p.Key, typeName, strings.Join(names, ", "))
 	}
 	ic := &issueCtx{p: p, t: t, set: fieldSet(t)}
-	enc := encoder{s: s, project: p.Key}
+	enc := encoder{s: s, project: p.Key, dir: path.Dir(req.Local.Path), idByPath: req.IDByPath}
 	fields := map[string]any{"project": map[string]any{"key": p.Key}, "issuetype": map[string]any{"id": t.ID}}
 	elems := make([]string, 0, len(elemFields))
 	for e := range elemFields {

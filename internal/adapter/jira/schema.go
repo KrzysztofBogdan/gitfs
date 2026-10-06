@@ -37,7 +37,7 @@ var issueSchema = &schema.Schema{
 		userElem("assignee"),
 		userElem("reporter"),
 		userElem("creator"),
-		{Name: "parent", Kind: schema.Field},
+		{Name: "parent", Kind: schema.Field, Attrs: []schema.Attr{{Name: "file"}}},
 		{Name: "labels", Kind: schema.List, Item: "label", Sorted: true},
 		{Name: "components", Kind: schema.List, Item: "component", Sorted: true},
 		{Name: "fixVersions", Kind: schema.List, Item: "version", Sorted: true},

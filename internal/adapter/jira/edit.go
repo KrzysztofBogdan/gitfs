@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 
@@ -122,10 +123,11 @@ func changedFields(base, local *xmltree.Node) []string {
 // edit screen and resolves people, but writes nothing.
 func (s *session) planEdit(ctx context.Context, ic *issueCtx, req adapter.ApplyRequest) (*editPlan, error) {
 	plan := &editPlan{put: map[string]any{}, covers: map[int][]string{}, errs: map[int]error{}, status: -1}
-	enc := encoder{s: s, issueKey: ic.key, project: ic.p.Key}
+	enc := encoder{s: s, issueKey: ic.key, project: ic.p.Key, idByPath: req.IDByPath}
 	var local, base *xmltree.Node
 	if req.Local != nil {
 		local = req.Local.Root
+		enc.dir = path.Dir(req.Local.Path)
 	}
 	if req.Base != nil {
 		base = req.Base.Root
