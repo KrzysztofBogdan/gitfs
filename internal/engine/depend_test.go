@@ -151,3 +151,19 @@ func TestCommitChildrenFollowRenamedParent(t *testing.T) {
 		t.Fatal("status must be clean")
 	}
 }
+
+func TestDryRunResolvesNewParents(t *testing.T) {
+	env, ad, out := cloned(t)
+	nested(ad)
+	write(t, env, "a/p.xml", noteXML("P"))
+	write(t, env, "a/p/c.xml", noteXML("C"))
+	r := commit(t, env, CommitOpts{DryRun: true})
+	if r.Failed != 0 || len(ad.Remote.Calls) != 0 || !strings.Contains(out.String(), "under a new parent") {
+		t.Fatalf("%+v\n%s", r, out)
+	}
+	ad.Remote.FailVerb = map[string]error{"create": errors.New("500 boom")}
+	out.Reset()
+	if r := commit(t, env, CommitOpts{DryRun: true}); r.Failed != 2 || !strings.Contains(out.String(), "parent a/p.xml was not created") {
+		t.Fatalf("%+v\n%s", r, out)
+	}
+}

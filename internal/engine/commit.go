@@ -113,6 +113,9 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		}
 	}
 	e.renamed = map[string]string{}
+	if o.DryRun {
+		e.creates = adds
+	}
 	defer func() { e.renamed, e.creates = nil, nil }()
 	failed := map[string]bool{}
 	var r Report
@@ -131,7 +134,9 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		}
 		var err error
 		if o.DryRun {
-			e.dryRunFile(ctx, fc, d, &r)
+			if !e.dryRunFile(ctx, fc, d, &r) && fc.Status == 'A' {
+				failed[fc.Path] = true
+			}
 		} else {
 			err = e.commitFile(ctx, fc, d, o, &r)
 			if _, ok := e.IDByPath(fc.Path); fc.Status == 'A' && !ok {
@@ -192,10 +197,12 @@ func (e *Env) precheck(fc changes.FileChange, r *Report) bool {
 	return true
 }
 
-func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.Decider, r *Report) {
+// dryRunFile reports what commit would do with fc, and whether all of it would run.
+func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.Decider, r *Report) bool {
 	if !e.precheck(fc, r) {
-		return
+		return false
 	}
+	ok := true
 	var checks []adapter.Result
 	if fc.Local != nil {
 		checks = e.Session.Check(ctx, adapter.ApplyRequest{
@@ -210,10 +217,12 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 		case level == policy.Deny:
 			mark = "[deny]"
 			r.Denied++
+			ok = false
 		case d.Asks(a.Class):
 			mark = "[ask]"
 			if d.Prompt == nil {
 				r.Denied++
+				ok = false
 			} else {
 				r.Actions++
 			}
@@ -222,6 +231,7 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 		}
 		if i < len(checks) && checks[i].Err != nil {
 			r.Failed++
+			ok = false
 			e.line(a.Verb, actPath(fc, a), a.To, "FAIL", oneLine(checks[i].Err))
 			continue
 		}
@@ -234,6 +244,7 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 			fmt.Fprintf(e.Out, "    ⚠ %s\n", a.Warning)
 		}
 	}
+	return ok
 }
 
 func baseResource(fc changes.FileChange) *adapter.Resource {
