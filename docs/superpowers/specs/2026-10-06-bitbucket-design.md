@@ -377,8 +377,9 @@ One file's actions run in this order:
 2. `update`: every changed group among title, description, destination,
    reviewer, close-source-branch, draft, sent together in one
    `PUT …/pullrequests/<id>` (reviewers sent in full as `account_id`s).
-3. `comment` create (in document order, so a reply after its parent in the
-   same commit resolves `parent` to the id just written back), update
+3. `comment` create (in document order; `parent` must name a comment that
+   already exists: Check refuses a reply to a comment created in the same
+   commit, `reply to a comment that exists; commit the parent first`), update
    (`PUT …/comments/<id>`), resolve/reopen
    (`POST`/`DELETE …/comments/<id>/resolve`), delete
    (`DELETE …/comments/<id>`).
@@ -603,7 +604,7 @@ request for assertions.
   digest changes when only a status changes.
 * `url.go`: URL forms, pasted URLs, sizes, normalisation, default folder.
 * `apply.go`: every row of §7.2 and §7.5 against the fake; read-only
-  refusals; reply-in-same-commit parent resolution; merge skipped after a
+  refusals; reply to a not-yet-created parent refused; merge skipped after a
   failed update; strategy check.
 * `people.go`: resolution order, ambiguity, cache refresh.
 * Logs: inline at exactly `limit`, attachment at `limit+1`, unknown total.
