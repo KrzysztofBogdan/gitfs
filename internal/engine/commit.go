@@ -104,8 +104,21 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		return ci < cj
 	})
 	d := &policy.Decider{Policy: pol, Allowed: o.Allow, Force: o.Force, Prompt: e.Prompt}
+	deps := e.dependencies(cs)
+	cs, cycles := orderCreates(cs, deps)
+	adds := map[string]bool{}
+	for _, fc := range cs {
+		if fc.Status == 'A' {
+			adds[fc.Path] = true
+		}
+	}
 	var r Report
 	for _, fc := range cs {
+		if msg, ok := cycles[fc.Path]; ok {
+			fc.Err = errors.New(msg)
+		} else if p := e.untracked(deps[fc.Path], adds); p != "" && fc.Status == 'A' {
+			fc.Err = fmt.Errorf("parent %s is not tracked and not part of this commit", p)
+		}
 		var err error
 		if o.DryRun {
 			e.dryRunFile(ctx, fc, d, &r)

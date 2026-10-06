@@ -60,14 +60,18 @@ type Remote struct {
 	FullDirs     []string         // returned as Listing.FullDirs
 	CacheDir     string           // last UseCache argument
 	Advice       map[string]adapter.Advice
-	CheckDetail  map[string]string // "verb group" -> Result.Detail from Check
-	Warn         map[string]string // Action.Detail -> Action.Warning set by Describe
-	NeedSecret   bool              // Apply reads a secret for comment creates
-	Secrets      []string          // secrets Apply read
-	VanishOnFail bool              // a failed sub update also removes that sub (a delete whose create failed)
-	Stubs        bool              // List returns stubs (no Root); the engine fetches them
-	Missing      map[string]bool   // listed, but Fetch reports not found (deleted after listing)
-	FetchLimit   int               // Fetch fails after this many calls (0: never)
+	CheckDetail  map[string]string        // "verb group" -> Result.Detail from Check
+	Warn         map[string]string        // Action.Detail -> Action.Warning set by Describe
+	NeedSecret   bool                     // Apply reads a secret for comment creates
+	Secrets      []string                 // secrets Apply read
+	VanishOnFail bool                     // a failed sub update also removes that sub (a delete whose create failed)
+	Stubs        bool                     // List returns stubs (no Root); the engine fetches them
+	Missing      map[string]bool          // listed, but Fetch reports not found (deleted after listing)
+	FetchLimit   int                      // Fetch fails after this many calls (0: never)
+	Parent       func(path string) string // create: the working path whose id becomes the new record's parent ("" none)
+	Parents      map[string]string        // record id -> parent id, set on create
+	CreatePath   map[string]string        // create: working path -> remote path (a title-derived rename)
+	FailCreate   map[string]error         // create of this working path fails
 	fetches      int
 	recs         map[string]*record
 	seq          int
@@ -188,7 +192,15 @@ func (r *Remote) resource(id string, rec *record) *adapter.Resource {
 
 type Adapter struct {
 	Remote *Remote
+	Deps   func(local *adapter.Resource) []string // DependsOn; nil: none
 	sch    *schema.Schema
+}
+
+func (a *Adapter) DependsOn(local *adapter.Resource) []string {
+	if a.Deps == nil {
+		return nil
+	}
+	return a.Deps(local)
 }
 
 func New() *Adapter { return &Adapter{Remote: &Remote{recs: map[string]*record{}}, sch: Schema} }
@@ -303,9 +315,32 @@ func (s session) Download(_ context.Context, resID, attID string, w io.Writer) (
 func (s session) Check(_ context.Context, req adapter.ApplyRequest) []adapter.Result {
 	var out []adapter.Result
 	for _, a := range req.Actions {
-		out = append(out, adapter.Result{Action: a, Err: s.fault(a), Detail: s.r.CheckDetail[a.Verb+" "+a.Group]})
+		res := adapter.Result{Action: a, Err: s.fault(a), Detail: s.r.CheckDetail[a.Verb+" "+a.Group]}
+		if a.Verb == "create" && a.Target == "" && res.Err == nil {
+			if pid, err := s.parentID(req); err != nil {
+				res.Err = err
+			} else if pid == adapter.Pending {
+				res.Detail = "under a new parent"
+			}
+		}
+		out = append(out, res)
 	}
 	return out
+}
+
+// parentID resolves the parent Remote.Parent names for a new file ("" none).
+func (s session) parentID(req adapter.ApplyRequest) (string, error) {
+	if s.r.Parent == nil {
+		return "", nil
+	}
+	pp := s.r.Parent(req.Local.Path)
+	if pp == "" {
+		return "", nil
+	}
+	if id, ok := req.IDByPath(pp); ok {
+		return id, nil
+	}
+	return "", fmt.Errorf("parent %s not found", pp)
 }
 
 func (s session) fault(a adapter.Action) error {
@@ -374,6 +409,17 @@ func (s session) Apply(_ context.Context, req adapter.ApplyRequest) []adapter.Re
 		s.r.Calls = append(s.r.Calls, a.Verb+" "+req.Local.Path)
 		switch {
 		case a.Verb == "create" && a.Target == "":
+			if err := s.r.FailCreate[req.Local.Path]; err != nil {
+				res.Err, res.Code = err, "500"
+				out = append(out, res)
+				continue
+			}
+			pid, err := s.parentID(req)
+			if err != nil {
+				res.Err = err
+				out = append(out, res)
+				continue
+			}
 			id = s.r.next()
 			root := req.Local.Root.Clone()
 			for _, c := range root.ChildrenNamed("comment") {
@@ -385,9 +431,19 @@ func (s session) Apply(_ context.Context, req adapter.ApplyRequest) []adapter.Re
 			root.Children = slices.DeleteFunc(root.Children, func(c *xmltree.Node) bool {
 				return c.Kind == xmltree.Element && c.Name == "attachment"
 			})
-			rec = &record{path: req.Local.Path, root: root, version: 0, by: "me"}
+			p := req.Local.Path
+			if np, ok := s.r.CreatePath[p]; ok {
+				p = np
+			}
+			rec = &record{path: p, root: root, version: 0, by: "me"}
 			s.r.recs[id] = rec
 			res.ID = id
+			if pid != "" {
+				if s.r.Parents == nil {
+					s.r.Parents = map[string]string{}
+				}
+				s.r.Parents[id] = pid
+			}
 		case a.Verb == "delete" && a.Target == "":
 			delete(s.r.recs, id)
 			out = append(out, res)

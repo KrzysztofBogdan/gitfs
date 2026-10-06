@@ -148,6 +148,17 @@ type BaseDescriber interface {
 	DescribeBase(a *Action, local, base *Resource)
 }
 
+// Dependent is implemented by adapters whose new resources need another
+// resource created first (a parent page, a parent issue). Paths are
+// working-tree paths; commit creates those files first.
+type Dependent interface {
+	DependsOn(local *Resource) []string
+}
+
+// Pending is the id IDByPath returns during a dry run for a file the same
+// commit would create. Adapters never send it to the service.
+const Pending = "(pending)"
+
 // Identified is implemented by sessions that know which account they act as.
 // Clone records the identity as [remote] email (credentials spec §6).
 type Identified interface{ Identity() string }
