@@ -3,6 +3,7 @@ package bitbucket
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -217,5 +218,22 @@ func TestFetchOutside(t *testing.T) {
 		if _, err := s.Fetch(bg, id); err == nil || !strings.Contains(err.Error(), "not found") {
 			t.Fatal(id, err)
 		}
+	}
+}
+
+func TestListingProgress(t *testing.T) {
+	srv := workspace(t)
+	s := testSession(t, srv, "bitbucket://bitbucket.org/acme/api")
+	var items []string
+	s.SetProgress(func(p adapter.Progress) {
+		if p.Phase == "pages" && p.Unit == "repositories" {
+			items = append(items, fmt.Sprintf("%d/%d %s", p.Done, p.Total, p.Item))
+		}
+	})
+	if _, err := s.List(bg, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) < 4 || items[0] != "0/1 api (0 PRs, 0 runs)" || items[len(items)-1] != "1/1 api (2 PRs, 2 runs)" {
+		t.Fatal(items)
 	}
 }

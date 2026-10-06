@@ -171,6 +171,7 @@ type Progress struct {
 	Phase       string
 	Done, Total int
 	Item        string // the space or path being worked on
+	Unit        string // "pages": what Done and Total count; "" means spaces
 }
 
 // Reporter is implemented by sessions that report progress while listing,

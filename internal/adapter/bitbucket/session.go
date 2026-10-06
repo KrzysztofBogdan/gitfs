@@ -37,6 +37,22 @@ type session struct {
 	// merge strategies of fetched PRs by id: Check and Available read them
 	strategies map[string]strategies
 	people     *people
+	listing    listProgress
+}
+
+// listProgress is what List has seen so far, for the progress line: listing
+// a busy repository is many requests.
+type listProgress struct {
+	repo        string
+	done, total int
+	prs, runs   int
+}
+
+func (s *session) listed(prs, runs int) {
+	l := &s.listing
+	l.prs, l.runs = l.prs+prs, l.runs+runs
+	s.report(adapter.Progress{Phase: "pages", Done: l.done, Total: l.total, Unit: "repositories",
+		Item: fmt.Sprintf("%s (%s, %s)", l.repo, plural(l.prs, "PR"), plural(l.runs, "run"))})
 }
 
 type strategies struct {
@@ -146,7 +162,8 @@ func (s *session) List(ctx context.Context, raw string) (adapter.Listing, error)
 	selected := map[string]bool{}
 	for i, repo := range repos {
 		selected[repo] = true
-		s.report(adapter.Progress{Phase: "pages", Done: i, Total: len(repos), Item: repo})
+		s.listing = listProgress{repo: repo, done: i, total: len(repos)}
+		s.listed(0, 0)
 		started := s.now().UTC()
 		rc := cur[repo]
 		if rc == nil {
@@ -156,6 +173,8 @@ func (s *session) List(ctx context.Context, raw string) (adapter.Listing, error)
 		if err != nil {
 			return adapter.Listing{}, fmt.Errorf("%s: %w", repo, err)
 		}
+		s.listing.done = i + 1
+		s.listed(0, 0)
 		nrc.PRs = started
 		next[repo] = nrc
 		l.Resources = append(l.Resources, res...)
@@ -185,6 +204,7 @@ func (s *session) listRepo(ctx context.Context, repo string, rc *repoCursor) ([]
 func (s *session) prStub(repo string, p apiPR) adapter.Resource {
 	id := prID(repo, p.ID)
 	s.prs[id] = p
+	s.listed(1, 0)
 	v := stamp(p.UpdatedOn)
 	if p.State == "OPEN" {
 		v = "" // statuses and comments may change without updated_on: always fetched
@@ -232,6 +252,7 @@ func (s *session) listPRs(ctx context.Context, repo string, rc *repoCursor) ([]a
 func (s *session) runStub(repo string, p apiPipeline) adapter.Resource {
 	id := runID(repo, p.UUID)
 	s.runs[id] = p
+	s.listed(0, 1)
 	v := ""
 	if p.State.Name == "COMPLETED" {
 		v = runVersion(runInput{Run: p})

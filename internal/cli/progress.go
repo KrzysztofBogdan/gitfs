@@ -108,7 +108,11 @@ func (b *bar) line(p adapter.Progress, now time.Time) string {
 	case "wait":
 		return p.Item
 	case "pages":
-		return fmt.Sprintf("Listing   %d/%d spaces  %s", p.Done, p.Total, p.Item)
+		unit := p.Unit
+		if unit == "" {
+			unit = "spaces"
+		}
+		return fmt.Sprintf("Listing   %d/%d %s  %s", p.Done, p.Total, unit, p.Item)
 	case "fetch":
 		frac := 0.0
 		if p.Total > 0 {
