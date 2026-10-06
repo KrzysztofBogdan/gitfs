@@ -35,10 +35,17 @@ func (r Report) ExitCode() int {
 	return 0
 }
 
+// isNew reports whether fc creates a resource: A, or a create that failed
+// before and carries <errors> (!).
+func isNew(fc changes.FileChange) bool {
+	return fc.Status == 'A' || (fc.Status == '!' && fc.Base == nil)
+}
+
 func category(fc changes.FileChange) int {
-	switch fc.Status {
-	case 'A':
+	if isNew(fc) {
 		return 0
+	}
+	switch fc.Status {
 	case 'R':
 		return 2
 	case 'D':
@@ -108,7 +115,7 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 	cs, cycles := orderCreates(cs, deps)
 	adds := map[string]bool{}
 	for _, fc := range cs {
-		if fc.Status == 'A' {
+		if isNew(fc) {
 			adds[fc.Path] = true
 		}
 	}
@@ -122,7 +129,7 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 	for _, fc := range cs {
 		if msg, ok := cycles[fc.Path]; ok {
 			fc.Err = errors.New(msg)
-		} else if p := e.untracked(deps[fc.Path], adds); p != "" && fc.Status == 'A' {
+		} else if p := e.untracked(deps[fc.Path], adds); p != "" && isNew(fc) {
 			fc.Err = fmt.Errorf("parent %s is not tracked and not part of this commit", p)
 		}
 		if p := failedDep(deps[fc.Path], failed); p != "" && fc.Err == nil && len(fc.Actions) > 0 {
@@ -134,12 +141,12 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		}
 		var err error
 		if o.DryRun {
-			if !e.dryRunFile(ctx, fc, d, &r) && fc.Status == 'A' {
+			if !e.dryRunFile(ctx, fc, d, &r) && isNew(fc) {
 				failed[fc.Path] = true
 			}
 		} else {
 			err = e.commitFile(ctx, fc, d, o, &r)
-			if _, ok := e.IDByPath(fc.Path); fc.Status == 'A' && !ok {
+			if _, ok := e.IDByPath(fc.Path); isNew(fc) && !ok {
 				failed[fc.Path] = true
 			}
 		}

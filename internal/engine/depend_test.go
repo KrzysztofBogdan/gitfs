@@ -167,3 +167,36 @@ func TestDryRunResolvesNewParents(t *testing.T) {
 		t.Fatalf("%+v\n%s", r, out)
 	}
 }
+
+// A create that failed carries <errors> (status !) but is still new: on retry
+// it is ordered with the other new files.
+func TestCommitRetriesFailedParentFirst(t *testing.T) {
+	env, ad, out := cloned(t)
+	ad.Deps = func(l *adapter.Resource) []string {
+		if l.Path == "a/1 child.xml" {
+			return []string{"a/2 parent.xml"}
+		}
+		return nil
+	}
+	ad.Remote.Parent = func(p string) string {
+		if p == "a/1 child.xml" {
+			return "a/2 parent.xml"
+		}
+		return ""
+	}
+	ad.Remote.FailCreate = map[string]error{"a/2 parent.xml": errors.New("500 boom")}
+	write(t, env, "a/1 child.xml", noteXML("Child"))
+	write(t, env, "a/2 parent.xml", noteXML("Parent"))
+	if r := commit(t, env, CommitOpts{}); r.Failed != 2 {
+		t.Fatalf("%+v\n%s", r, out)
+	}
+	ad.Remote.FailCreate = nil
+	ad.Remote.Calls = nil
+	out.Reset()
+	if r := commit(t, env, CommitOpts{}); r.ExitCode() != 0 {
+		t.Fatalf("%+v\n%s", r, out)
+	}
+	if got := strings.Join(ad.Remote.Calls, "|"); got != "create a/2 parent.xml|create a/1 child.xml" {
+		t.Fatalf("order: %s", got)
+	}
+}

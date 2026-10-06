@@ -53,3 +53,63 @@ func TestJiraCloneEditCommit(t *testing.T) {
 		t.Fatal(out)
 	}
 }
+
+// A new issue and new children naming it by file commit together; the
+// children's files sort before the parent's.
+func TestJiraNewParentAndChildren(t *testing.T) {
+	srv := jiraSite(t)
+	srv.SetFields("GEN", "1",
+		jtest.Field{ID: "summary", Name: "Summary", Type: "string", Required: true},
+		jtest.Field{ID: "issuetype", Name: "Issue Type", Type: "issuetype", Required: true},
+		jtest.Field{ID: "parent", Name: "Parent", Type: "issuelink"})
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustRun(t, 0, "clone", "jira://acme.atlassian.net/GEN?base="+srv.URL)
+	t.Chdir(filepath.Join(dir, "gen"))
+	issue := func(name, extra string) {
+		os.WriteFile("gen/"+name+".xml", []byte(`<issue><summary>`+name+`</summary><type>Task</type>`+extra+`</issue>`), 0o644)
+	}
+	key := func(summary string) string {
+		m, _ := filepath.Glob("gen/GEN-* " + summary + ".xml")
+		if len(m) != 1 {
+			t.Fatalf("%s: %v", summary, m)
+		}
+		return strings.Fields(filepath.Base(m[0]))[0]
+	}
+	parentOf := func(k string) any {
+		p, _ := srv.Issue(srv.ID(k)).Fields["parent"].(map[string]any)
+		return p["key"]
+	}
+
+	issue("Z epic", "")
+	issue("A login page", `<parent file="Z epic.xml"/>`)
+	issue("B button", `<parent file="A login page.xml"/>`)
+	mustContain(t, mustRun(t, 0, "commit", "--dry-run"), "parent: Z epic.xml (created in this commit)", "0 failed")
+	mustRun(t, 0, "commit")
+	epic, page, button := key("Z epic"), key("A login page"), key("B button")
+	if parentOf(page) != epic || parentOf(button) != page {
+		t.Fatalf("%s<-%v %s<-%v", page, parentOf(page), button, parentOf(button))
+	}
+	if b, _ := os.ReadFile("gen/" + button + " B button.xml"); !strings.Contains(string(b), "<parent>"+page+"</parent>") {
+		t.Fatalf("%s", b)
+	}
+	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
+
+	// a parent that fails leaves its child new; both go next time
+	issue("C child", `<parent file="D bad.xml"/>`)
+	os.WriteFile("gen/D bad.xml", []byte(`<issue><summary>D bad</summary><type>Nope</type></issue>`), 0o644)
+	mustContain(t, mustRun(t, 1, "commit"), "parent gen/D bad.xml was not created")
+	replaceIn(t, "gen/D bad.xml", "<type>Nope</type>", "<type>Task</type>")
+	mustRun(t, 0, "commit")
+	if parentOf(key("C child")) != key("D bad") {
+		t.Fatal(parentOf(key("C child")))
+	}
+
+	// an existing issue re-parents onto an issue created in the same commit
+	issue("E epic", "")
+	replaceIn(t, "gen/GEN-1 Migrate auth.xml", "</summary>", `</summary><parent file="E epic.xml"/>`)
+	mustRun(t, 0, "commit")
+	if parentOf("GEN-1") != key("E epic") {
+		t.Fatal(parentOf("GEN-1"))
+	}
+}

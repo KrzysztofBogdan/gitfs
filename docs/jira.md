@@ -69,6 +69,9 @@ acme/
 * The file name is `<KEY> <summary>.xml`. Editing `<summary>` renames the file
   on commit; renaming the file yourself does nothing.
 * Hierarchy is `<parent>`, never folders. Sub-tasks sit next to their parent.
+  A parent that is new too is named by its file in the same folder,
+  `<parent file="Q4 platform epic.xml"/>`: commit creates it first, then the
+  child, and writes the parent's key back.
 * A new file in a project folder creates an issue there. A folder that is not
   a selected project is refused. Moving a file to another project folder does
   nothing (`status` warns "rename ignored"): Jira's move needs a field mapping.
@@ -87,7 +90,7 @@ acme/
   <assignee account="712020:de26…">Adam Lipiński</assignee>
   <reporter account="qm:718e…">hadas@example.com</reporter>
   <creator account="qm:718e…">hadas@example.com</creator>
-  <parent>SUP-4000</parent>
+  <parent>SUP-4000</parent>              <!-- or <parent file="New epic.xml"/> -->
   <labels><label>renewal</label></labels>
   <components><component>billing</component></components>
   <fixVersions><version>2026.10</version></fixVersions>

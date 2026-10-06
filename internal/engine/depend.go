@@ -33,7 +33,7 @@ func (e *Env) dependencies(cs []changes.FileChange) map[string][]string {
 // them first). It also returns, per file in a cycle, the cycle.
 func orderCreates(cs []changes.FileChange, deps map[string][]string) ([]changes.FileChange, map[string]string) {
 	n := 0
-	for n < len(cs) && cs[n].Status == 'A' {
+	for n < len(cs) && isNew(cs[n]) {
 		n++
 	}
 	at := map[string]int{}
