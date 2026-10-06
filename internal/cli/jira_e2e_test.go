@@ -113,3 +113,46 @@ func TestJiraNewParentAndChildren(t *testing.T) {
 		t.Fatal(parentOf("GEN-1"))
 	}
 }
+
+// A workflow without To Do -> Done: the file lists the steps; a stop keeps
+// the block and the next commit resumes.
+func TestJiraTransitionChain(t *testing.T) {
+	srv := jiraSite(t)
+	srv.SetFields("GEN", "1",
+		jtest.Field{ID: "summary", Name: "Summary", Type: "string", Required: true},
+		jtest.Field{ID: "issuetype", Name: "Issue Type", Type: "issuetype", Required: true},
+		jtest.Field{ID: "resolution", Name: "Resolution", Type: "resolution"})
+	srv.EditHidden = []string{"resolution"}
+	srv.SetWorkflow("GEN", "1", jtest.Workflow{Name: "Dev flow",
+		Statuses: []jtest.Status{{ID: "1", Name: "To Do", Category: "new"}, {ID: "2", Name: "In Progress", Category: "indeterminate"},
+			{ID: "3", Name: "Done", Category: "done"}},
+		Transitions: []jtest.Transition{
+			{ID: "21", Name: "Start", To: "In Progress", From: []string{"To Do"}},
+			{ID: "31", Name: "Finish", To: "Done", From: []string{"In Progress"}, Screen: []jtest.ScreenField{{ID: "resolution", Required: true}}},
+		}})
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustRun(t, 0, "clone", "jira://acme.atlassian.net/GEN?base="+srv.URL)
+	t.Chdir(filepath.Join(dir, "gen"))
+	file := "gen/GEN-1 Migrate auth.xml"
+	replaceIn(t, file, "<status>To Do</status>",
+		`<status>Done</status><transitions><transition to="In Progress"/><transition to="Done"/></transitions>`)
+	mustContain(t, mustRun(t, 0, "commit", "--dry-run"), "transition To Do -> In Progress -> Done (step 1 checked; the rest when run)")
+	mustContain(t, mustRun(t, 1, "commit"), `stopped at "In Progress" (step 2 of 2, to "Done")`)
+	if is := srv.Issue(srv.ID("GEN-1")); is.Status != "In Progress" {
+		t.Fatal(is.Status)
+	}
+	b, _ := os.ReadFile(file)
+	if !strings.Contains(string(b), "<status>Done</status>") || !strings.Contains(string(b), "<transitions>") || !strings.Contains(string(b), "<errors>") {
+		t.Fatalf("%s", b)
+	}
+	replaceIn(t, file, `<transition to="Done"/>`, `<transition to="Done"><resolution>Done</resolution></transition>`)
+	mustRun(t, 0, "commit")
+	if is := srv.Issue(srv.ID("GEN-1")); is.Status != "Done" {
+		t.Fatal(is.Status)
+	}
+	if b, _ := os.ReadFile(file); strings.Contains(string(b), "<transitions>") {
+		t.Fatalf("%s", b)
+	}
+	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
+}

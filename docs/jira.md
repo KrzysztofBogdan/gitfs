@@ -194,12 +194,49 @@ Changing `<status>` runs one workflow transition.
   (`<resolution>`, for example). A required screen field you did not change is
   sent from the file; if the file lacks it, the commit says
   `transition "Resolve this issue" requires <resolution>; add it`.
-* A status two steps away is refused with the statuses reachable now; gfs
-  never runs a chain of transitions for you.
+* A status two steps away is refused with the statuses reachable now. gfs
+  never picks a path; to go through several statuses, list the steps
+  (below).
 * `gfs actions <file>` lists the transitions you can take on that issue now,
   their screen fields and allowed values, and what the file's `<status>`
   would resolve to. `.workflows.xml` shows the whole workflows when you have
   the Administer Jira permission, and only statuses otherwise.
+
+### Several transitions
+
+When the workflow has no direct way to the status you want, list the steps:
+
+```xml
+<status>Done</status>
+<transitions>
+  <transition to="In Progress"><assignee>dev@example.com</assignee></transition>
+  <transition to="In Review"/>
+  <transition to="Done" name="Resolve this issue"><resolution>Fixed</resolution></transition>
+</transitions>
+<assignee>owner@example.com</assignee>
+```
+
+* Steps run in order. `to` is the step's target status; `name` picks the
+  transition when several lead there, and must lead to `to`.
+* A step holds the values its transition screen takes (`<resolution>`,
+  `<assignee>`, `<field id=…>`, …). A value that is not on that screen is
+  refused: `<assignee> is not on the screen of transition "Start"`. A
+  required screen field the step does not set is taken from the file, as
+  for a single transition. `<comment>` does not go in a step.
+* `<status>` must equal the last step's `to`, and a status may appear only
+  once among the steps.
+* The rest of the file is the end state: its changes are one edit sent
+  after the last step, and must be on the edit screen.
+* After a successful commit the block is gone and `<status>` shows where
+  the issue is. If a step fails, the issue stays at the status it reached,
+  the file keeps `<status>`, the block and `<errors>`
+  (`stopped at "In Review" (step 2 of 3, to "Done"): …`), the file's other
+  changes are held back, and the next commit resumes after the step that
+  reached the current status.
+* `commit --dry-run` checks every step's values and the first step to run;
+  the later steps are checked when they run. A new issue file may carry a
+  block too: gfs creates the issue, then runs the steps from its initial
+  status.
 
 ## What each change does
 
@@ -208,6 +245,7 @@ Changing `<status>` runs one workflow transition.
 | new file in a project folder | create the issue, then its status, comments, worklogs, links, attachments | `create` |
 | field edited, added or removed | one edit of all changed fields | `update` |
 | `<status>` changed | transition (with its screen fields) | `transition` |
+| `<status>` changed with a `<transitions>` block | the steps in order, then the other changes | `transition` |
 | new `<comment>` | add comment | `comment` |
 | new `<comment public="true">` in a service project | add a public reply: **emails the customer** | `reply` (ask) |
 | comment edited | edit (your own comments only) | `comment` |
