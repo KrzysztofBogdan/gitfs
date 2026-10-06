@@ -381,10 +381,12 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 			if title == "" {
 				title = baseName(req.Local.Path)
 			}
-			if sp, _, err := s.parentFor(req.Local.Path, req.IDByPath); err != nil {
+			if sp, parent, err := s.parentFor(req.Local.Path, req.IDByPath); err != nil {
 				res.Err = err
 			} else if s.titleTaken(sp, title, "") {
 				res.Err = fmt.Errorf("title %q is already used in space %s", title, sp.key)
+			} else if parent == adapter.Pending {
+				res.Detail = a.Detail + " (created in this commit)"
 			}
 		case a.Verb == "move" || (a.Verb == "update" && a.Group == "title"):
 			title, _, err := s.pagePut(req, []int{i})

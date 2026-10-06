@@ -264,3 +264,44 @@ func TestConfluenceCloneSurvivesRateLimit(t *testing.T) {
 	out := mustRun(t, 0, "clone", "confluence://acme.atlassian.net?base="+srv.URL, "wt")
 	mustContain(t, out, "Rate limited by Confluence, retrying in 0s…", "Cloned 3 resources")
 }
+
+// A new page tree commits in one go, even when the parent's title moves its
+// file and folder on write-back.
+func TestConfluenceNewPageTree(t *testing.T) {
+	srv := siteServer(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustRun(t, 0, "clone", "confluence://acme.atlassian.net?base="+srv.URL)
+	t.Chdir(filepath.Join(dir, "acme"))
+	page := func(p, title string) {
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(`<page><title>`+title+`</title><body type="application/xhtml+xml"><p>x</p></body></page>`), 0o644)
+	}
+	page("eng/Home/Guide.xml", "User Guide")
+	page("eng/Home/Guide/Step one.xml", "Step one")
+	page("eng/Home/Guide/Step one/Detail.xml", "Detail")
+	mustContain(t, mustRun(t, 0, "commit", "--dry-run"), `create page under "Guide" (created in this commit)`, "0 failed")
+	mustRun(t, 0, "commit")
+	ids := map[string]string{}
+	for _, p := range []string{"eng/Home/User Guide.xml", "eng/Home/User Guide/Step one.xml", "eng/Home/User Guide/Step one/Detail.xml"} {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := regexp.MustCompile(`<page id="(\d+)"`).FindSubmatch(b)
+		if m == nil {
+			t.Fatalf("%s:\n%s", p, b)
+		}
+		ids[p] = string(m[1])
+	}
+	if exists("eng/Home/Guide") || exists("eng/Home/Guide.xml") {
+		t.Fatal("the old file and folder must go")
+	}
+	if p, _ := srv.Page(ids["eng/Home/User Guide.xml"]); p.ParentID != "81001" {
+		t.Fatalf("%+v", p)
+	}
+	if p, _ := srv.Page(ids["eng/Home/User Guide/Step one/Detail.xml"]); p.ParentID != ids["eng/Home/User Guide/Step one.xml"] {
+		t.Fatalf("%+v", p)
+	}
+	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
+}

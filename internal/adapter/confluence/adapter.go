@@ -68,6 +68,15 @@ func (*Adapter) Open(ctx context.Context, u *url.URL, cfg map[string]string) (ad
 
 func baseName(p string) string { return strings.TrimSuffix(path.Base(p), ".xml") }
 
+// DependsOn names the page file of the folder a page sits in: a new parent
+// page is created before its children.
+func (*Adapter) DependsOn(local *adapter.Resource) []string {
+	if p := parentPath(local.Path); p != "" {
+		return []string{p}
+	}
+	return nil
+}
+
 func (*Adapter) Describe(a *adapter.Action, local *adapter.Resource) {
 	a.Class = a.Verb
 	switch {

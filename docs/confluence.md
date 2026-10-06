@@ -222,10 +222,11 @@ gfs commit
 #   create  hf/Handoff Home/Release notes.xml   ok   id=…
 ```
 
-The parent is the page whose folder the file sits in, and that parent must
-already exist on Confluence (commit it first). Without `<title>` the file name
-becomes the title. After commit the file is written back under the name
-derived from the title.
+The parent is the page whose folder the file sits in. It may be new in the
+same commit: gfs creates parents before their children, at any depth, and
+skips the children of a parent that was not created (`parent … was not
+created`). Without `<title>` the file name becomes the title. After commit
+the file is written back under the name derived from the title.
 
 ## Pull
 
