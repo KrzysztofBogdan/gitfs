@@ -132,6 +132,10 @@ func New(t Target, product string) *Client {
 		OnWait: func(string) {}, hc: &http.Client{Timeout: 60 * time.Second}, xfer: &http.Client{}}
 }
 
+// HTTPClient is the client for requests NewRequest builds that Do cannot
+// send (a form post).
+func (c *Client) HTTPClient() *http.Client { return c.hc }
+
 func (c *Client) NewRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.Target.Base+path, body)
 	if err != nil {
