@@ -12,9 +12,11 @@ import (
 	"net/http"
 	"net/textproto"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
@@ -48,12 +50,32 @@ func (e *APIError) Message() string {
 		Message       string   `json:"message"`
 		ErrorMessage  string   `json:"errorMessage"`
 		ErrorMessages []string `json:"errorMessages"`
+		Error         struct {
+			Message string              `json:"message"`
+			Detail  string              `json:"detail"`
+			Fields  map[string][]string `json:"fields"`
+		} `json:"error"` // Bitbucket
 	}
 	var parts []string
 	if json.Unmarshal([]byte(e.Body), &m) == nil {
 		for _, s := range append([]string{m.Message, m.ErrorMessage}, m.ErrorMessages...) {
 			if s != "" {
 				parts = append(parts, s)
+			}
+		}
+		if bb := m.Error; bb.Message != "" {
+			msg := bb.Message
+			if bb.Detail != "" {
+				msg += ": " + bb.Detail
+			}
+			parts = append(parts, msg)
+			keys := make([]string, 0, len(bb.Fields))
+			for k := range bb.Fields {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				parts = append(parts, k+": "+strings.Join(bb.Fields[k], ", "))
 			}
 		}
 	}
@@ -98,7 +120,12 @@ type Client struct {
 	LoginHint string
 	hc        *http.Client // JSON calls, with a timeout
 	xfer      *http.Client // attachment bytes: no timeout, the context cancels
+	nearLimit atomic.Bool  // the last response said X-RateLimit-NearLimit: true (Bitbucket)
 }
+
+// NearLimit reports whether the last response said fewer than 20% of the
+// hour's requests remain (Bitbucket).
+func (c *Client) NearLimit() bool { return c.nearLimit.Load() }
 
 func New(t Target, product string) *Client {
 	return &Client{Target: t, Product: product, Header: http.Header{}, Sleep: httpx.SleepCtx, Now: time.Now,
@@ -149,7 +176,11 @@ func (c *Client) send(ctx context.Context, hc *http.Client, build func() (*http.
 // (Jira search is a POST), so transient errors are retried as for GET.
 func (c *Client) sendRead(ctx context.Context, hc *http.Client, read bool, build func() (*http.Request, error)) (*http.Response, error) {
 	r := &httpx.Retrier{Service: c.Product, Sleep: c.Sleep, Now: c.Now, OnWait: c.OnWait}
-	return r.Send(ctx, hc, read, build)
+	resp, err := r.Send(ctx, hc, read, build)
+	if resp != nil {
+		c.nearLimit.Store(resp.Header.Get("X-RateLimit-NearLimit") == "true")
+	}
+	return resp, err
 }
 
 func (c *Client) Do(ctx context.Context, method, path string, in, out any) error {
@@ -215,6 +246,58 @@ func (c *Client) Download(ctx context.Context, path string, w io.Writer) (int64,
 		return 0, c.apiError(resp)
 	}
 	return io.Copy(w, resp.Body)
+}
+
+var contentRangeRe = regexp.MustCompile(`^bytes (?:\d+-\d+|\*)/(\d+|\*)$`)
+
+// Range writes bytes from..to of GET path into w (to < 0: to the end) and
+// returns the full size, -1 when unknown (bitbucket spec §8.2). Nothing at or
+// past from (416) and a 404 (a log not started yet) are not errors.
+func (c *Client) Range(ctx context.Context, path string, from, to int64, w io.Writer) (int64, error) {
+	spec := fmt.Sprintf("bytes=%d-", from)
+	if to >= 0 {
+		spec += strconv.FormatInt(to, 10)
+	}
+	resp, err := c.send(ctx, c.xfer, func() (*http.Request, error) {
+		req, err := c.NewRequest(ctx, http.MethodGet, path, nil)
+		if err == nil {
+			req.Header.Set("Accept", "*/*")
+			req.Header.Set("Range", spec)
+		}
+		return req, err
+	})
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	total := func() int64 {
+		m := contentRangeRe.FindStringSubmatch(resp.Header.Get("Content-Range"))
+		if m == nil || m[1] == "*" {
+			return -1
+		}
+		n, _ := strconv.ParseInt(m[1], 10, 64)
+		return n
+	}
+	switch {
+	case resp.StatusCode == http.StatusPartialContent:
+		_, err := io.Copy(w, resp.Body)
+		return total(), err
+	case resp.StatusCode == http.StatusRequestedRangeNotSatisfiable:
+		return total(), nil
+	case resp.StatusCode == http.StatusNotFound:
+		return -1, nil
+	case resp.StatusCode >= 400:
+		return 0, c.apiError(resp)
+	}
+	if _, err := io.CopyN(io.Discard, resp.Body, from); err != nil && err != io.EOF {
+		return 0, err
+	}
+	var body io.Reader = resp.Body
+	if to >= 0 {
+		body = io.LimitReader(resp.Body, to-from+1)
+	}
+	_, err = io.Copy(w, body)
+	return resp.ContentLength, err
 }
 
 // Upload POSTs r as the multipart part "file" named filename, streaming it,
