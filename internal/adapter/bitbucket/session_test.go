@@ -233,7 +233,13 @@ func TestListingProgress(t *testing.T) {
 	if _, err := s.List(bg, ""); err != nil {
 		t.Fatal(err)
 	}
-	if len(items) < 4 || items[0] != "0/1 api (0 PRs, 0 runs)" || items[len(items)-1] != "1/1 api (2 PRs, 2 runs)" {
+	if len(items) < 4 || items[0] != "0/1 api (0 PRs, 0 runs)" || items[len(items)-1] != "1/1 api (2/2 PRs, 2/2 runs)" {
 		t.Fatal(items)
+	}
+	if !slices.Contains(items, "0/1 api (1/2 PRs, 0 runs)") {
+		t.Fatal("the PR total shows as soon as the first page is read:", items)
+	}
+	if thousands(1231) != "1,231" || thousands(1234567) != "1,234,567" || thousands(12) != "12" {
+		t.Fatal(thousands(1231))
 	}
 }

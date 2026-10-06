@@ -134,6 +134,7 @@ type apiStep struct {
 // page is one page of a paged listing.
 type page[T any] struct {
 	Next   string `json:"next"`
+	Size   *int   `json:"size"` // matches in all pages, when Bitbucket counts them
 	Values []T    `json:"values"`
 }
 

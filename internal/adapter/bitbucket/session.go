@@ -43,16 +43,41 @@ type session struct {
 // listProgress is what List has seen so far, for the progress line: listing
 // a busy repository is many requests.
 type listProgress struct {
-	repo        string
-	done, total int
-	prs, runs   int
+	repo              string
+	done, total       int
+	prs, runs         int
+	prTotal, runTotal int // 0: unknown
 }
 
 func (s *session) listed(prs, runs int) {
 	l := &s.listing
 	l.prs, l.runs = l.prs+prs, l.runs+runs
 	s.report(adapter.Progress{Phase: "pages", Done: l.done, Total: l.total, Unit: "repositories",
-		Item: fmt.Sprintf("%s (%s, %s)", l.repo, plural(l.prs, "PR"), plural(l.runs, "run"))})
+		Item: fmt.Sprintf("%s (%s, %s)", l.repo, counted(l.prs, l.prTotal, "PR"), counted(l.runs, l.runTotal, "run"))})
+}
+
+// counted is "123/1,231 PRs", or "123 PRs" without a total.
+func counted(n, total int, word string) string {
+	if total <= 0 {
+		return thousands(n) + " " + word + "s"
+	}
+	return thousands(n) + "/" + thousands(total) + " " + word + "s"
+}
+
+func thousands(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// capped is a listing's total as far as a limit lets it go.
+func (s *session) capped(n int) int {
+	if s.t.sel.limit > 0 && n > s.t.sel.limit {
+		return s.t.sel.limit
+	}
+	return n
 }
 
 type strategies struct {
@@ -87,6 +112,12 @@ func (s *session) get(ctx context.Context, path string, q url.Values, out any) e
 
 // pages calls each for every value of a paged listing until it returns false.
 func pages[T any](ctx context.Context, s *session, path string, q url.Values, each func(T) (bool, error)) error {
+	return pagesSized(ctx, s, path, q, nil, each)
+}
+
+// pagesSized is pages that tells size the listing's total from its first
+// page, when Bitbucket reports one.
+func pagesSized[T any](ctx context.Context, s *session, path string, q url.Values, size func(int), each func(T) (bool, error)) error {
 	next := path
 	if len(q) > 0 {
 		next += "?" + q.Encode()
@@ -95,6 +126,10 @@ func pages[T any](ctx context.Context, s *session, path string, q url.Values, ea
 		var p page[T]
 		if err := s.c.Do(ctx, "GET", next, nil, &p); err != nil {
 			return err
+		}
+		if size != nil && p.Size != nil {
+			size(*p.Size)
+			size = nil
 		}
 		for _, v := range p.Values {
 			more, err := each(v)
@@ -223,7 +258,8 @@ func (s *session) listPRs(ctx context.Context, repo string, rc *repoCursor) ([]a
 		if since := sinceTime(s.t.sel.since, s.now()); !since.IsZero() {
 			q.Set("q", fmt.Sprintf(`updated_on >= "%s"`, since.UTC().Format(time.RFC3339)))
 		}
-		err := pages(ctx, s, path, q, func(p apiPR) (bool, error) {
+		total := func(n int) { s.listing.prTotal = s.capped(n) }
+		err := pagesSized(ctx, s, path, q, total, func(p apiPR) (bool, error) {
 			out = append(out, s.prStub(repo, p))
 			return s.t.sel.limit == 0 || len(out) < s.t.sel.limit, nil
 		})
@@ -269,7 +305,11 @@ func (s *session) listRuns(ctx context.Context, repo string, rc *repoCursor) ([]
 	since := sinceTime(s.t.sel.since, s.now())
 	full := rc == nil
 	q := url.Values{"sort": {"-created_on"}, "pagelen": {"100"}}
-	err := pages(ctx, s, s.repoPath(repo)+"/pipelines/", q, func(p apiPipeline) (bool, error) {
+	var total func(int)
+	if full && since.IsZero() { // Bitbucket cannot filter runs by date: its count says nothing then
+		total = func(n int) { s.listing.runTotal = s.capped(n) }
+	}
+	err := pagesSized(ctx, s, s.repoPath(repo)+"/pipelines/", q, total, func(p apiPipeline) (bool, error) {
 		if !full && p.BuildNumber <= rc.Run {
 			return false, nil
 		}
