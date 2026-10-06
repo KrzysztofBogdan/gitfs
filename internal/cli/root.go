@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/bitbucket"  // registers bitbucket://
 	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/cloudns"    // registers cloudns://
 	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence" // registers confluence://
 	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/jira"       // registers jira://
