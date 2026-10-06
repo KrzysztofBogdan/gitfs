@@ -52,6 +52,10 @@ The engine calls `DependsOn` for every file with local content (`A` and
 
 ### 2.2 Ordering
 
+"New file" below means status `A`, or `!` without a base: a create that
+failed in an earlier commit and carries `<errors>`. Commit sorts both
+first, so a retried parent is ordered before its children.
+
 `Commit` keeps its category sort (A, M, R, D). Inside the A group it then
 orders topologically by dependency, keeping path order wherever no
 dependency forces otherwise, so commits without dependencies run exactly
