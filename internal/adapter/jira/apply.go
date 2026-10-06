@@ -135,6 +135,9 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 	if plan.tr != nil && plan.errs[plan.status] == nil {
 		out[plan.status].Detail = transitionDetail(plan)
 	}
+	if plan.steps != nil && plan.errs[plan.status] == nil {
+		out[plan.status].Detail = chainDetail(plan)
+	}
 	for i, a := range req.Actions {
 		if a.Target != "" && !a.IsAttachment() {
 			_, out[i].Err = s.planSub(ctx, ic, req, a)

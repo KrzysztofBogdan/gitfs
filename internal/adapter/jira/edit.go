@@ -78,6 +78,12 @@ type editPlan struct {
 	from     string           // status before the change
 	tr       *apiTransition   // the chosen transition, nil if none
 	trFields map[string]any   // field id -> value sent with the transition
+	stepsIdx int              // index of the <transitions> action, -1 if none
+	steps    []step           // the file's <transitions> block, nil without one
+	own      []map[string]any // each step's own fields, encoded
+	start    int              // the first step to run
+	enc      encoder          // for steps planned while the chain runs
+	in       editInput
 }
 
 // editInput is the two versions of the file being applied.
@@ -122,7 +128,7 @@ func changedFields(base, local *xmltree.Node) []string {
 // planEdit turns the update actions of req into field values. It reads the
 // edit screen and resolves people, but writes nothing.
 func (s *session) planEdit(ctx context.Context, ic *issueCtx, req adapter.ApplyRequest) (*editPlan, error) {
-	plan := &editPlan{put: map[string]any{}, covers: map[int][]string{}, errs: map[int]error{}, status: -1}
+	plan := &editPlan{put: map[string]any{}, covers: map[int][]string{}, errs: map[int]error{}, status: -1, stepsIdx: -1}
 	enc := encoder{s: s, issueKey: ic.key, project: ic.p.Key, idByPath: req.IDByPath}
 	var local, base *xmltree.Node
 	if req.Local != nil {
@@ -139,6 +145,8 @@ func (s *session) planEdit(ctx context.Context, ic *issueCtx, req adapter.ApplyR
 		switch a.Group {
 		case "status":
 			plan.status = i
+		case "transitions":
+			plan.stepsIdx = i
 		case "field":
 			for _, id := range changedFields(base, local) {
 				m, ok := ic.set[id]
@@ -176,7 +184,12 @@ func (s *session) planEdit(ctx context.Context, ic *issueCtx, req adapter.ApplyR
 			}
 		}
 	}
-	if plan.status >= 0 {
+	plan.enc, plan.in = enc, editInput{local, base}
+	switch {
+	case plan.stepsIdx >= 0 || (plan.status >= 0 && child(local, "transitions") != nil):
+		plan.from = textOf(child(base, "status"))
+		s.planChain(ctx, ic, plan)
+	case plan.status >= 0:
 		plan.from = textOf(child(base, "status"))
 		s.planTransition(ctx, ic, enc, plan, textOf(child(local, "status")), plan.from, editInput{local, base})
 	}
@@ -213,6 +226,8 @@ func (s *session) checkEditable(ctx context.Context, ic *issueCtx, plan *editPla
 				_, onScreen = plan.tr.Fields[id]
 			}
 			switch {
+			case id == "resolution" && plan.steps != nil:
+				plan.errs[i] = errors.New("<resolution> is not on the edit screen; put it in the <transition> that sets it")
 			case onScreen && plan.errs[plan.status] != nil:
 				plan.errs[i] = fmt.Errorf("not sent: it goes with the transition, which failed (%v)", plan.errs[plan.status])
 			case id == "resolution" && plan.tr != nil:
@@ -263,6 +278,10 @@ func fieldError(err error, ids []string) error {
 // applyEdit sends plan.put in one PUT, then the transition with its screen
 // fields, and records each action's outcome in out (jira spec §7.2, §7.3).
 func (s *session) applyEdit(ctx context.Context, ic *issueCtx, plan *editPlan, out []adapter.Result) {
+	if plan.steps != nil || plan.stepsIdx >= 0 {
+		s.applyChain(ctx, ic, plan, out)
+		return
+	}
 	var errPut, errTr error
 	if len(plan.put) > 0 {
 		errPut = s.c.Do(ctx, http.MethodPut, "/rest/api/3/issue/"+url.PathEscape(ic.id), map[string]any{"fields": plan.put}, nil)
@@ -299,16 +318,21 @@ func (s *session) applyEdit(ctx context.Context, ic *issueCtx, plan *editPlan, o
 
 // sendTransition runs plan's transition with its screen fields.
 func (s *session) sendTransition(ctx context.Context, ic *issueCtx, plan *editPlan) error {
-	body := map[string]any{"transition": map[string]any{"id": plan.tr.ID}}
-	if len(plan.trFields) > 0 {
-		body["fields"] = plan.trFields
+	return s.postTransition(ctx, ic, *plan.tr, plan.trFields)
+}
+
+// postTransition runs transition tr with its screen fields.
+func (s *session) postTransition(ctx context.Context, ic *issueCtx, tr apiTransition, fields map[string]any) error {
+	body := map[string]any{"transition": map[string]any{"id": tr.ID}}
+	if len(fields) > 0 {
+		body["fields"] = fields
 	}
 	err := s.c.Do(ctx, http.MethodPost, "/rest/api/3/issue/"+url.PathEscape(ic.id)+"/transitions", body, nil)
 	if err == nil {
 		return nil
 	}
-	ids := make([]string, 0, len(plan.trFields))
-	for id := range plan.trFields {
+	ids := make([]string, 0, len(fields))
+	for id := range fields {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
