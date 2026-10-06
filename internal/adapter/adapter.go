@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/schema"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
@@ -192,6 +193,19 @@ type Linter interface {
 // engine passes <tree>/.gfs/cache (possibly not yet created) before listing
 // or applying; the session owns what it writes there.
 type Cacher interface{ UseCache(dir string) }
+
+// Tailer is implemented by sessions that can stream a running job's output
+// (bitbucket spec §9.4). id is a resource id from the index.
+type Tailer interface {
+	Tail(ctx context.Context, id string, o TailOpts, out io.Writer) (TailResult, error)
+}
+
+type TailOpts struct{ Wait, Interval time.Duration }
+
+type TailResult struct {
+	RunID  string // the run watched; a pull request id resolves to one
+	Result string // successful, failed, error, stopped, expired; "" when ctx ended first
+}
 
 // Advisor is implemented by sessions that can say what the user may do to one
 // resource now (jira spec §8). local is the file's current content.

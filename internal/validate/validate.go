@@ -15,7 +15,7 @@ import (
 // same resource, or nil for a new one.
 func Resource(root, ref *xmltree.Node, s *schema.Schema) error {
 	var errs []error
-	if root.Name != s.Root {
+	if root.Name != s.Root && !slices.Contains(s.Roots, root.Name) {
 		return fmt.Errorf("root element <%s>, want <%s>", root.Name, s.Root)
 	}
 	errs = append(errs, readOnly(s.Root, root, ref, s.RootAttrs)...)

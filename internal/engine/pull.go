@@ -22,6 +22,7 @@ type PullOpts struct {
 	Force  bool
 	Full   bool // list everything, ignoring the cursor
 	Filter func(string) bool
+	IDs    []string // only these resources, fetched one by one; the cursor is kept
 }
 
 type PullReport struct{ Added, Updated, Merged, Moved, Deleted, Conflicts int }
@@ -61,7 +62,7 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 		cursor = "" // label-only changes, deleted comments and attachments show up only this way
 	}
 	e.report(adapter.Progress{Phase: "list"})
-	l, err := e.Session.List(ctx, cursor)
+	l, err := e.listing(ctx, cursor, o.IDs)
 	if err != nil {
 		e.report(adapter.Progress{Phase: "done"})
 		return r, err
@@ -81,7 +82,7 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 	// A skipped page the listing sent in full (changed without a new version)
 	// would come back as a stub next time: keep the old cursor so the next
 	// listing flags it again. A path-limited pull skips pages it never looks at.
-	keepCursor := o.Filter != nil
+	keepCursor := o.Filter != nil || len(o.IDs) > 0
 	listed := map[string]bool{}
 	for i, item := range l.Resources {
 		e.report(adapter.Progress{Phase: "fetch", Done: i, Total: len(l.Resources), Item: item.Path})
@@ -264,6 +265,26 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 		fmt.Fprintln(e.Out, "Already up to date.")
 	}
 	return r, nil
+}
+
+// listing is the session's listing, or with ids only those resources,
+// fetched one by one (gfs tail writes back the run it watched).
+func (e *Env) listing(ctx context.Context, cursor string, ids []string) (adapter.Listing, error) {
+	if len(ids) == 0 {
+		return e.Session.List(ctx, cursor)
+	}
+	var l adapter.Listing
+	for _, id := range ids {
+		res, err := e.Session.Fetch(ctx, id)
+		if errors.Is(err, adapter.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return l, err
+		}
+		l.Resources = append(l.Resources, *res)
+	}
+	return l, nil
 }
 
 // StripReadOnly removes service-owned attributes so the content can be re-created.

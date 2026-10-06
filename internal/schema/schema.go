@@ -46,6 +46,7 @@ type Elem struct {
 
 type Schema struct {
 	Root      string
+	Roots     []string // other root element names; their elements are in Elems too
 	RootAttrs []Attr
 	ID        string // identity attribute of the root
 	Version   string // version attribute of the root, "" if none

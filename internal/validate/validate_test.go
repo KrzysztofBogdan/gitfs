@@ -91,3 +91,13 @@ func TestFieldReadOnlyAttrs(t *testing.T) {
 		t.Error("a new resource may not set a read-only attribute")
 	}
 }
+
+func TestAlternateRoot(t *testing.T) {
+	s := &schema.Schema{Root: "a", Roots: []string{"b"}, Elems: []schema.Elem{{Name: "x", Kind: schema.Field}}}
+	if err := Resource(p(t, `<b><x>1</x></b>`), nil, s); err != nil {
+		t.Fatal(err)
+	}
+	if err := Resource(p(t, `<c/>`), nil, s); err == nil || !strings.Contains(err.Error(), "want <a>") {
+		t.Fatalf("%v", err)
+	}
+}

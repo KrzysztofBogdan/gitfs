@@ -68,3 +68,15 @@ func TestDNSAsks(t *testing.T) {
 		t.Fatal(p.Level("dns"))
 	}
 }
+
+func TestMergeDeclineAsk(t *testing.T) {
+	p, _ := FromConfig(nil)
+	for _, c := range []string{"merge", "decline"} {
+		if p.Level(c) != Ask {
+			t.Fatal(c)
+		}
+	}
+	if p.Level("review") != Allow {
+		t.Fatal("review")
+	}
+}
