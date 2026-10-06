@@ -35,7 +35,7 @@ func (*Adapter) Normalize(u *url.URL) (string, error) {
 }
 
 func (*Adapter) Open(ctx context.Context, u *url.URL, cfg map[string]string) (adapter.Session, error) {
-	t, err := parseTarget(u, cfg, os.Getenv, creds.System{})
+	t, err := parseTarget(u, cfg, os.Getenv, creds.System{}, creds.Store{Dirs: creds.DefaultDirs()})
 	if err != nil {
 		return nil, err
 	}

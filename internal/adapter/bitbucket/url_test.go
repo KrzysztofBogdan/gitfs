@@ -110,15 +110,32 @@ func (lookup) SoleIdentity() string             { return "" }
 func TestParseTarget(t *testing.T) {
 	env := map[string]string{"GFS_BITBUCKET_EMAIL": "me@x.com", "GFS_BITBUCKET_TOKEN": "tok"}
 	u, _ := url.Parse("bitbucket://bitbucket.org/acme")
-	tg, err := parseTarget(u, nil, func(k string) string { return env[k] }, lookup{})
+	tg, err := parseTarget(u, nil, func(k string) string { return env[k] }, lookup{}, noEntries{})
 	if err != nil || tg.base != "https://api.bitbucket.org/2.0" || tg.email != "me@x.com" || tg.token != "tok" || tg.sel.workspace != "acme" {
 		t.Fatalf("%+v %v", tg, err)
 	}
 	u, _ = url.Parse("bitbucket://bitbucket.org/acme?base=http://127.0.0.1:9/2.0/")
-	if tg, _ = parseTarget(u, nil, func(k string) string { return env[k] }, lookup{}); tg.base != "http://127.0.0.1:9/2.0" {
+	if tg, _ = parseTarget(u, nil, func(k string) string { return env[k] }, lookup{}, noEntries{}); tg.base != "http://127.0.0.1:9/2.0" {
 		t.Fatal(tg.base)
 	}
-	if _, err := parseTarget(u, nil, func(string) string { return "" }, lookup{}); err == nil || !strings.Contains(err.Error(), "no identity for bitbucket.org") {
+	if _, err := parseTarget(u, nil, func(string) string { return "" }, lookup{}, noEntries{}); err == nil || !strings.Contains(err.Error(), "no identity for bitbucket.org") {
 		t.Fatal(err)
 	}
+	onlyEmail := func(k string) string { return map[string]string{"GFS_BITBUCKET_EMAIL": "Me@x.com"}[k] }
+	tg, err = parseTarget(u, nil, onlyEmail, lookup{}, noEntries{"bitbucket:me@x.com": "scoped"})
+	if err != nil || tg.token != "scoped" {
+		t.Fatal(tg, err)
+	}
+	if _, err := parseTarget(u, nil, onlyEmail, lookup{}, noEntries{}); err == nil || !strings.Contains(err.Error(), "no Bitbucket token for Me@x.com: run gfs auth login bitbucket://bitbucket.org/acme") {
+		t.Fatal(err)
+	}
+}
+
+type noEntries map[string]string
+
+func (e noEntries) GetEntry(name string) (string, error) {
+	if v, ok := e[name]; ok {
+		return v, nil
+	}
+	return "", creds.ErrNotFound
 }

@@ -26,7 +26,7 @@ func testSession(t *testing.T, srv *bbtest.Server, remote string) *session {
 	q.Set("base", srv.URL)
 	u.RawQuery = q.Encode()
 	env := map[string]string{"GFS_BITBUCKET_EMAIL": "me@x.com", "GFS_BITBUCKET_TOKEN": "tok"}
-	tg, err := parseTarget(u, nil, func(k string) string { return env[k] }, lookup{})
+	tg, err := parseTarget(u, nil, func(k string) string { return env[k] }, lookup{}, noEntries{})
 	if err != nil {
 		t.Fatal(err)
 	}

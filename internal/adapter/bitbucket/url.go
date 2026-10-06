@@ -197,7 +197,16 @@ func sinceTime(since string, now time.Time) time.Time {
 	return t
 }
 
-func parseTarget(u *url.URL, cfg map[string]string, getenv func(string) string, lk creds.Lookup) (target, error) {
+// entries reads named keyring entries (creds.Store).
+type entries interface {
+	GetEntry(name string) (string, error)
+}
+
+// tokenEntry is the keyring entry of an account's Bitbucket token: a scoped
+// token, unlike the Jira and Confluence one stored under the bare email.
+func tokenEntry(email string) string { return "bitbucket:" + strings.ToLower(email) }
+
+func parseTarget(u *url.URL, cfg map[string]string, getenv func(string) string, lk creds.Lookup, store entries) (target, error) {
 	n, err := normalize(u)
 	if err != nil {
 		return target{}, err
@@ -210,10 +219,23 @@ func parseTarget(u *url.URL, cfg map[string]string, getenv func(string) string, 
 	if b := n.Query().Get("base"); b != "" {
 		t.base = strings.TrimRight(b, "/")
 	}
-	if t.email, t.token, err = atlassian.Creds(n, cfg, getenv, lk, "GFS_BITBUCKET"); err != nil {
+	login := "gfs auth login " + n.Scheme + "://" + host + n.Path
+	if t.email, err = atlassian.Email(n, cfg, getenv, lk, "GFS_BITBUCKET"); err != nil {
 		return target{}, err
 	}
-	return t, nil
+	if t.email == "" {
+		return target{}, fmt.Errorf("no identity for %s: run %s", host, login)
+	}
+	if t.token = getenv("GFS_BITBUCKET_TOKEN"); t.token != "" {
+		return t, nil
+	}
+	if t.token, err = store.GetEntry(tokenEntry(t.email)); err == nil && t.token != "" {
+		return t, nil
+	}
+	if t.token, err = lk.Token(t.email); err == nil && t.token != "" {
+		return t, nil // a token stored with gfs auth set: may be the Jira one
+	}
+	return target{}, fmt.Errorf("no Bitbucket token for %s: run %s", t.email, login)
 }
 
 // defaultDir is the repository for a one-repository selection, else the workspace.

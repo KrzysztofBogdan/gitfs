@@ -36,6 +36,11 @@ func Creds(u *url.URL, cfg map[string]string, getenv func(string) string, lk cre
 	return email, token, nil
 }
 
+// Email is the identity Creds would use for u, or "" when none is known.
+func Email(u *url.URL, cfg map[string]string, getenv func(string) string, lk creds.Lookup, prefix string) (string, error) {
+	return resolveEmail(u, cfg, getenv, lk, prefix)
+}
+
 func resolveEmail(u *url.URL, cfg map[string]string, getenv func(string) string, lk creds.Lookup, prefix string) (string, error) {
 	if e := getenv(prefix + "_EMAIL"); e != "" {
 		return e, nil
