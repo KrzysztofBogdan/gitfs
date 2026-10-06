@@ -31,6 +31,10 @@ type Env struct {
 	Batch      bool
 	IndexSaves int
 	pending    int
+	// One commit's view of paths (parent-child spec §2.3): where write-back
+	// moved files, and in a dry run the new files the commit would create.
+	renamed map[string]string
+	creates map[string]bool
 }
 
 func (e *Env) report(p adapter.Progress) {
@@ -92,8 +96,20 @@ func (e *Env) Log(verb, path, newPath, outcome, detail string) {
 }
 
 func (e *Env) IDByPath(path string) (string, bool) {
-	en, ok := e.Index.ByPath(path)
-	return en.ID, ok
+	for range len(e.renamed) {
+		next, ok := e.renamed[path]
+		if !ok {
+			break
+		}
+		path = next
+	}
+	if en, ok := e.Index.ByPath(path); ok {
+		return en.ID, true
+	}
+	if e.creates[path] {
+		return adapter.Pending, true
+	}
+	return "", false
 }
 
 func (e *Env) Resolved(ctx context.Context, r adapter.Resource) (*adapter.Resource, error) {

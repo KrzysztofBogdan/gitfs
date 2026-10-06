@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"path"
 	"strings"
 	"testing"
@@ -86,5 +87,67 @@ func TestCommitRefusesCycleAndMissingParent(t *testing.T) {
 		if !strings.Contains(out.String(), s) {
 			t.Fatalf("missing %q:\n%s", s, out)
 		}
+	}
+}
+
+func TestCommitSkipsChildrenOfFailedParent(t *testing.T) {
+	env, ad, out := cloned(t)
+	nested(ad)
+	ad.Remote.FailCreate = map[string]error{"a/p.xml": errors.New("500 boom")}
+	write(t, env, "a/p.xml", noteXML("P"))
+	write(t, env, "a/p/c.xml", noteXML("C"))
+	write(t, env, "a/p/c/g.xml", noteXML("G"))
+	r := commit(t, env, CommitOpts{})
+	if r.Failed != 3 || strings.Join(ad.Remote.Calls, "|") != "create a/p.xml" {
+		t.Fatalf("%+v %v\n%s", r, ad.Remote.Calls, out)
+	}
+	for _, s := range []string{"parent a/p.xml was not created", "parent a/p/c.xml was not created"} {
+		if !strings.Contains(out.String(), s) {
+			t.Fatalf("missing %q:\n%s", s, out)
+		}
+	}
+	if !strings.Contains(read(t, env, "a/p/c.xml"), "<msg>parent a/p.xml was not created</msg>") {
+		t.Fatal(read(t, env, "a/p/c.xml"))
+	}
+	if n := len(status(t, env)); n != 3 {
+		t.Fatalf("all three stay new: %d", n)
+	}
+	ad.Remote.FailCreate = nil
+	out.Reset()
+	if r := commit(t, env, CommitOpts{}); r.ExitCode() != 0 {
+		t.Fatalf("retry: %+v\n%s", r, out)
+	}
+	if ad.Remote.Parents[idOf(t, env, "a/p/c/g.xml")] != idOf(t, env, "a/p/c.xml") {
+		t.Fatalf("%v", ad.Remote.Parents)
+	}
+}
+
+func TestCommitChildrenFollowRenamedParent(t *testing.T) {
+	env, ad, out := cloned(t)
+	nested(ad)
+	ad.Remote.CreatePath = map[string]string{
+		"a/guide.xml":             "a/User guide.xml",
+		"a/guide/step.xml":        "a/User guide/step.xml",
+		"a/guide/step/detail.xml": "a/User guide/step/detail.xml",
+	}
+	write(t, env, "a/guide.xml", noteXML("User guide"))
+	write(t, env, "a/guide/step.xml", noteXML("Step"))
+	write(t, env, "a/guide/step/detail.xml", noteXML("Detail"))
+	if r := commit(t, env, CommitOpts{}); r.ExitCode() != 0 {
+		t.Fatalf("%+v\n%s", r, out)
+	}
+	for _, p := range []string{"a/User guide.xml", "a/User guide/step.xml", "a/User guide/step/detail.xml"} {
+		if !env.Tree.Exists(p) {
+			t.Fatalf("missing %s", p)
+		}
+	}
+	if env.Tree.Exists("a/guide.xml") || env.Tree.Exists("a/guide") {
+		t.Fatal("the old file and folder must go")
+	}
+	if ad.Remote.Parents[idOf(t, env, "a/User guide/step/detail.xml")] != idOf(t, env, "a/User guide/step.xml") {
+		t.Fatalf("%v", ad.Remote.Parents)
+	}
+	if len(status(t, env)) != 0 {
+		t.Fatal("status must be clean")
 	}
 }

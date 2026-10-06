@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -83,4 +84,26 @@ func (e *Env) untracked(deps []string, adds map[string]bool) string {
 		}
 	}
 	return ""
+}
+
+// failedDep is the first dependency whose create did not happen in this commit.
+func failedDep(deps []string, failed map[string]bool) string {
+	for _, p := range deps {
+		if failed[p] {
+			return p
+		}
+	}
+	return ""
+}
+
+// skipBlocked fails fc without sending anything: its parent was not created
+// in this commit (parent-child spec §2.3).
+func (e *Env) skipBlocked(fc changes.FileChange, parent string, dryRun bool, r *Report) error {
+	err := fmt.Errorf("parent %s was not created", parent)
+	if dryRun {
+		r.Failed++
+		e.line(fc.Actions[0].Verb, fc.Path, "", "FAIL", err.Error())
+		return nil
+	}
+	return e.failAll(fc, fc.Actions, err, r)
 }

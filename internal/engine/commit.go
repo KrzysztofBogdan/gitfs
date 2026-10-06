@@ -112,6 +112,9 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 			adds[fc.Path] = true
 		}
 	}
+	e.renamed = map[string]string{}
+	defer func() { e.renamed, e.creates = nil, nil }()
+	failed := map[string]bool{}
 	var r Report
 	for _, fc := range cs {
 		if msg, ok := cycles[fc.Path]; ok {
@@ -119,11 +122,21 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		} else if p := e.untracked(deps[fc.Path], adds); p != "" && fc.Status == 'A' {
 			fc.Err = fmt.Errorf("parent %s is not tracked and not part of this commit", p)
 		}
+		if p := failedDep(deps[fc.Path], failed); p != "" && fc.Err == nil && len(fc.Actions) > 0 {
+			failed[fc.Path] = true
+			if err := e.skipBlocked(fc, p, o.DryRun, &r); err != nil {
+				return r, err
+			}
+			continue
+		}
 		var err error
 		if o.DryRun {
 			e.dryRunFile(ctx, fc, d, &r)
 		} else {
 			err = e.commitFile(ctx, fc, d, o, &r)
+			if _, ok := e.IDByPath(fc.Path); fc.Status == 'A' && !ok {
+				failed[fc.Path] = true
+			}
 		}
 		if err != nil {
 			return r, err
@@ -454,6 +467,9 @@ func (e *Env) finish(ctx context.Context, fc changes.FileChange, content *xmltre
 		if err := e.Tree.Remove(fc.Path); err != nil {
 			return err
 		}
+	}
+	if path != fc.Path && e.renamed != nil {
+		e.renamed[fc.Path] = path
 	}
 	report(path)
 	if err := e.StoreBase(remote, fc.Entry.Path); err != nil {
