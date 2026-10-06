@@ -59,9 +59,11 @@ as today.
 
 - Cycle: every file in the cycle fails `invalid` with
   `parent cycle: a.xml -> b.xml -> a.xml`; nothing is sent.
-- A dependency path that is neither tracked nor an `A` file of this
-  commit (typo, or excluded by a path filter): the child fails with
-  `parent X.xml is not tracked and not part of this commit`.
+- A dependency of an `A` file that is neither tracked nor an `A` file
+  of this commit (typo, or excluded by a path filter): the file fails
+  `invalid` with `parent X.xml is not tracked and not part of this
+  commit`. `M` files are not checked this way; the adapter reports what
+  it cannot resolve.
 
 ### 2.3 Per-commit state
 
@@ -86,9 +88,9 @@ as created (its id is indexed); children proceed.
 
 ### 2.4 Empty folders
 
-When a write-back moves a file out of a folder and that folder is now
-empty, the engine removes it, and then each newly empty ancestor, never
-a top-level (space or project) folder. A folder with any file left is kept.
+When a write-back moves a file out of a folder, `Tree.Remove` already
+prunes the folder and its ancestors once empty; no new code. A folder
+with any file left is kept.
 
 ## 3. Adapters
 
@@ -96,7 +98,9 @@ a top-level (space or project) folder. A folder with any file left is kept.
 
 - `DependsOn` returns `parentPath(local.Path)` when it is non-empty.
 - `parentFor` is unchanged; the engine's `renamed` and `pending` lookups
-  fix both bugs. A truly missing parent still reports `… commit it first`.
+  fix both bugs. A parent page file that is truly missing is now reported
+  by the engine (§2.2) before the adapter's `… commit it first` is
+  reached; that message stays for direct adapter callers.
 - Dry-run detail for a pending parent: `create page under "Guide"
   (created in this commit)`.
 
@@ -110,10 +114,12 @@ issue's file:
 <parent>GEN-759</parent>                <!-- existing issue, by key -->
 ```
 
-- Schema (`relaxng.go`, `schema.go`): text or empty-with-`file`. Both, or
-  `file=""`, is invalid: `<parent> takes a key or file="…", not both`.
-- `file` is a file name in the same project folder; a value containing
-  `/` is invalid: `<parent file> names a file in this project folder`.
+- Schema (`schema.go`): `<parent>` gains the attribute `file` (the
+  RelaxNG already allows any attribute). The adapter has no status-time
+  validation hook, so the encoder enforces the form, and the errors
+  show in `commit --dry-run` and `commit`: text and `file` together, or
+  `file=""`, is `<parent> takes a key or file="…", not both`; a `file`
+  containing `/` is `<parent file> names a file in this project folder`.
 - `DependsOn` returns `path.Join(path.Dir(local.Path), file)`.
 - Encode (`encode.go`, case `parent`): with `file`, `IDByPath` gives the
   issue id, sent as `{"id": …}`. Not found: `parent file X.xml is not an
@@ -140,7 +146,7 @@ issue's file:
 - Engine unit (fake adapter with a `DependsOn` stub): topological order
   and stable path order, cycle, skip after failed and denied parent
   (transitively), `renamed` lookup, `Pending` in dry run, empty folder
-  removed and non-empty kept.
+  removed (by the existing prune) and non-empty kept.
 - Confluence e2e (`confluence_site_e2e_test.go`): three-level new tree,
   parent title differs from its file name. Dry run 0 failed; commit
   creates all three under the right parents; files end under
@@ -149,5 +155,7 @@ issue's file:
   names sort before the epic, all `file=`. Server sees parent created
   first; write-back has `<parent>KEY</parent>`; denied parent leaves
   children `A`; an `M` file re-parents onto a new epic.
-- Jira unit: schema accepts key, accepts `file`, rejects both, rejects
-  `file` with `/`.
+- Jira unit (`planCreate`): key, `file` resolving to an id, both,
+  `file=""`, `file` with `/`, unknown file.
+- `jtest`: `parent` given by id or key is stored as `{id, key}` like real
+  Jira returns it.
