@@ -122,6 +122,11 @@ func (*Adapter) Describe(a *adapter.Action, local *adapter.Resource) {
 		a.Detail = "delete issue"
 	case a.Verb == "update" && a.Group == "status":
 		a.Class, a.Detail = "transition", "transition to "+textOf(child(root, "status"))
+		if child(root, "transitions") != nil {
+			a.Detail = describeChain(root)
+		}
+	case a.Verb == "update" && a.Group == "transitions":
+		a.Detail = "steps of the transition"
 	case a.Verb == "update" && a.Group == "field":
 		a.Detail = "update custom fields"
 	case a.Verb == "update":

@@ -32,6 +32,7 @@ var issueSchema = &schema.Schema{
 		{Name: "summary", Kind: schema.Field},
 		{Name: "type", Kind: schema.Field},
 		{Name: "status", Kind: schema.Field},
+		{Name: "transitions", Kind: schema.Field},
 		{Name: "resolution", Kind: schema.Field},
 		{Name: "priority", Kind: schema.Field},
 		userElem("assignee"),

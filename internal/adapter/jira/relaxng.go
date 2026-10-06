@@ -52,6 +52,7 @@ func RelaxNG() string {
 	for _, f := range []string{"summary", "type", "status", "resolution", "priority", "parent", "due"} {
 		w(`        <optional>%s</optional>`, text(f))
 	}
+	w(`        <optional><element name="transitions"><ref name="any"/></element></optional>`)
 	w(`        <zeroOrMore><ref name="user"/></zeroOrMore>`)
 	w(`        %s`, list("labels", "label"))
 	w(`        %s`, list("components", "component"))
