@@ -198,6 +198,16 @@ type Linter interface {
 // or applying; the session owns what it writes there.
 type Cacher interface{ UseCache(dir string) }
 
+// Placer is implemented by adapters whose attachment files live outside the
+// X.files/ sidecar (ksef spec §2.1). Resource files are then only the files
+// under ResourceDir; any other file is an attachment of the resource
+// ResourceOf names, or a stray.
+type Placer interface {
+	ResourceDir() string
+	AttachmentPath(resPath, name string) string
+	ResourceOf(attPath string) (resPath string, ok bool)
+}
+
 // Tailer is implemented by sessions that can stream a running job's output
 // (bitbucket spec §9.4). id is a resource id from the index.
 type Tailer interface {

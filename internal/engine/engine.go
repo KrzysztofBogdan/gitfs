@@ -130,5 +130,10 @@ func (e *Env) saveIndex(force bool) error {
 	}
 	e.pending = 0
 	e.IndexSaves++
+	if e.Batch && e.Atts != nil {
+		if err := e.saveAtts(); err != nil { // tracking lines written during the batch
+			return err
+		}
+	}
 	return e.Tree.SaveIndex(e.Index)
 }

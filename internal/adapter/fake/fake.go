@@ -572,3 +572,28 @@ func (s session) UseCache(dir string) { s.r.CacheDir = dir }
 func (s session) Available(_ context.Context, id string, _ *adapter.Resource) (adapter.Advice, error) {
 	return s.r.Advice[id], nil
 }
+
+// Placed is the fake adapter with attachments outside X.files/ (ksef spec
+// §2.1): resources live under _m/, and attachment name of _m/<dir>/<stem>.xml
+// is <dir>/<stem>.<name>.
+type Placed struct{ *Adapter }
+
+func NewPlaced() *Placed { return &Placed{New()} }
+
+func (*Placed) ResourceDir() string { return "_m" }
+
+func (*Placed) AttachmentPath(resPath, name string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(resPath, "_m/"), ".xml") + "." + name
+}
+
+func (*Placed) ResourceOf(p string) (string, bool) {
+	if strings.HasPrefix(p, "_m/") {
+		return "", false
+	}
+	dir, file := path.Split(p)
+	stem, _, ok := strings.Cut(file, ".")
+	if !ok {
+		return "", false
+	}
+	return "_m/" + dir + stem + ".xml", true
+}

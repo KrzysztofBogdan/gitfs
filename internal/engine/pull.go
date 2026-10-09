@@ -345,7 +345,7 @@ func (e *Env) pullAttachments(ctx context.Context, o PullOpts, say func(string, 
 		if o.Filter == nil || o.Filter(l.Path) {
 			return true
 		}
-		res, _ := attach.ResourceOf(l.Path)
+		res, _ := e.placement().ResourceOf(l.Path)
 		return o.Filter(res)
 	}
 	for _, l := range e.Atts.All() {

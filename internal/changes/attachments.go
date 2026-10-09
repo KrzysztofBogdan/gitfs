@@ -27,10 +27,38 @@ type attCtx struct {
 	ad      adapter.Adapter
 	e       *schema.Elem    // nil: the adapter has no attachments
 	claimed map[string]bool // sidecar dirs accounted for by some resource
+	pl      attach.Placement
+	files   map[string]bool     // attachment files some resource accounts for (placed mode: the rest are strays)
+	dirs    map[string][]string // placed mode: listing of each shared attachment folder, read once
+}
+
+// list is pl.List with each shared placed folder read once (a month folder
+// of thousands of invoices is listed once, not once per invoice).
+func (c *attCtx) list(resPath string) (files, dirs []string, err error) {
+	if !c.pl.Placed() {
+		return c.pl.List(c.t, resPath)
+	}
+	d := c.pl.Dir(resPath)
+	all, ok := c.dirs[d]
+	if !ok {
+		if all, _, err = c.t.ListSidecar(d); err != nil {
+			return nil, nil, err
+		}
+		c.dirs[d] = all
+	}
+	var own []string
+	for _, f := range all {
+		if c.pl.Owns(resPath, f) {
+			own = append(own, f)
+		}
+	}
+	return own, nil, nil
 }
 
 func (c *attCtx) claim(resPath, resID string) {
-	c.claimed[attach.SidecarDir(resPath)] = true
+	if !c.pl.Placed() {
+		c.claimed[c.pl.Dir(resPath)] = true
+	}
 	if resID != "" {
 		for _, l := range c.atts.ForResource(resID) {
 			c.claimed[path.Dir(l.Path)] = true
@@ -45,10 +73,13 @@ func (c *attCtx) changes(resID, resPath string, local, base *xmltree.Node, expli
 		return nil, nil
 	}
 	c.claim(resPath, resID)
-	dir := attach.SidecarDir(resPath)
-	files, dirs, err := c.t.ListSidecar(dir)
+	dir := c.pl.Dir(resPath)
+	files, dirs, err := c.list(resPath)
 	if err != nil {
 		return nil, err
+	}
+	for _, f := range files {
+		c.files[f] = true
 	}
 	var out []AttChange
 	for _, d := range dirs {
@@ -100,7 +131,7 @@ func (c *attCtx) changes(resID, resPath string, local, base *xmltree.Node, expli
 		}
 		out = append(out, c.change('M', cur, l.AttID, "update", resPath, local))
 	}
-	baseDerived := attach.Derive(base, c.e, resPath)
+	baseDerived := attach.Derive(c.pl, base, c.e, resPath)
 	for _, id := range sortedKeys(baseEls) {
 		if localEls[id] != nil {
 			continue
@@ -115,7 +146,7 @@ func (c *attCtx) changes(resID, resPath string, local, base *xmltree.Node, expli
 		out = append(out, ch)
 	}
 	unfetched := map[string]bool{}
-	for id, p := range attach.Derive(local, c.e, resPath) {
+	for id, p := range attach.Derive(c.pl, local, c.e, resPath) {
 		if _, ok := c.atts.Get(resID, id); !ok {
 			unfetched[p] = true
 		}
@@ -228,7 +259,7 @@ func (c *attCtx) orphans(seen map[string]string) ([]FileChange, error) {
 			return nil, err
 		}
 		if changed {
-			res, _ := attach.ResourceOf(l.Path)
+			res, _ := c.pl.ResourceOf(l.Path)
 			if _, ok := gone[res]; !ok {
 				goneKeys = append(goneKeys, res)
 			}
@@ -239,6 +270,9 @@ func (c *attCtx) orphans(seen map[string]string) ([]FileChange, error) {
 	var out []FileChange
 	for _, res := range goneKeys {
 		out = append(out, FileChange{Status: 'C', Path: res, Quiet: true, Attachments: gone[res]})
+	}
+	if c.pl.Placed() {
+		return out, nil // placed attachments have no sidecar folders; strays are found in Compute
 	}
 	dirs, err := c.t.Sidecars()
 	if err != nil {

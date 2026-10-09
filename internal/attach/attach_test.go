@@ -32,7 +32,7 @@ func TestPaths(t *testing.T) {
 
 func TestDeriveDuplicatesAndPrefix(t *testing.T) {
 	root, _ := xmltree.ParseString(`<mail><attachment id="10" name="scan.pdf"/><attachment id="3" name="scan.pdf"/><attachment id="4" name="SCAN.pdf"/><attachment id="5" name="a/b.txt"/><attachment name="new.txt"/></mail>`)
-	got := Derive(root, elem, "inbox/Invoice.xml")
+	got := Derive(PlacementOf(nil), root, elem, "inbox/Invoice.xml")
 	want := map[string]string{
 		"3":  "inbox/Invoice.files/scan.pdf",
 		"4":  "inbox/Invoice.files/SCAN (2).pdf",
@@ -49,10 +49,10 @@ func TestDeriveDuplicatesAndPrefix(t *testing.T) {
 	}
 	pre := &schema.Elem{Name: "file", Kind: schema.Attachment, ID: "id", NameAttr: "name", PrefixAttr: "ts"}
 	msg, _ := xmltree.ParseString(`<message ts="1758096060.000300"><file id="F1" name="graph.png"/></message>`)
-	if p := Derive(msg, pre, "general/2026-09-17.xml")["F1"]; p != "general/2026-09-17.files/1758096060.000300-graph.png" {
+	if p := Derive(PlacementOf(nil), msg, pre, "general/2026-09-17.xml")["F1"]; p != "general/2026-09-17.files/1758096060.000300-graph.png" {
 		t.Fatal(p)
 	}
-	if len(Derive(nil, elem, "x.xml")) != 0 {
+	if len(Derive(PlacementOf(nil), nil, elem, "x.xml")) != 0 {
 		t.Fatal("nil root")
 	}
 }

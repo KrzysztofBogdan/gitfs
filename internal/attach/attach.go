@@ -77,10 +77,10 @@ func Version(el *xmltree.Node, e *schema.Elem) string {
 	return "-"
 }
 
-// Derive maps attachment id to sidecar path for every attachment element of
+// Derive maps attachment id to its placed path for every attachment element of
 // root (attachments spec 3.2): sanitised name, optional prefix from the parent,
 // de-duplicated in id order.
-func Derive(root *xmltree.Node, e *schema.Elem, resPath string) map[string]string {
+func Derive(pl Placement, root *xmltree.Node, e *schema.Elem, resPath string) map[string]string {
 	out := map[string]string{}
 	if root == nil || e == nil {
 		return out
@@ -102,7 +102,6 @@ func Derive(root *xmltree.Node, e *schema.Elem, resPath string) map[string]strin
 		items = append(items, item{id, name})
 	}
 	sort.SliceStable(items, func(i, j int) bool { return idLess(items[i].id, items[j].id) })
-	dir := SidecarDir(resPath)
 	used := map[string]int{}
 	for _, it := range items {
 		key := strings.ToLower(it.name)
@@ -111,7 +110,7 @@ func Derive(root *xmltree.Node, e *schema.Elem, resPath string) map[string]strin
 		if n := used[key]; n > 1 {
 			name = numbered(name, n)
 		}
-		out[it.id] = dir + "/" + name
+		out[it.id] = pl.Path(resPath, name)
 	}
 	return out
 }

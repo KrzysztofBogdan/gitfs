@@ -17,7 +17,7 @@ func Resolve(ctx context.Context, e *Env, paths []string, ours bool) error {
 	}
 	s := e.Adapter.Schema()
 	for _, p := range paths {
-		if _, inSidecar := attach.ResourceOf(p); inSidecar {
+		if _, inSidecar := e.placement().ResourceOf(p); inSidecar {
 			if err := e.resolveAttachment(ctx, p, ours); err != nil {
 				return err
 			}

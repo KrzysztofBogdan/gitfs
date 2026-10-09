@@ -22,6 +22,9 @@ import (
 
 func (e *Env) attachmentElem() *schema.Elem { return e.Adapter.Schema().Attachment() }
 
+// placement is where the adapter keeps attachment files (ksef spec §2.1).
+func (e *Env) placement() attach.Placement { return attach.PlacementOf(e.Adapter) }
+
 func (e *Env) saveAtts() error { return e.Tree.SaveAttachments(e.Atts) }
 
 func (e *Env) open(rel string) (io.ReadCloser, error) { return e.Tree.Open(rel) }
@@ -70,8 +73,8 @@ func (e *Env) placeAttachments(id, resPath string, root *xmltree.Node) ([][2]str
 	if el == nil {
 		return nil, nil
 	}
-	derived := attach.Derive(root, el, resPath)
-	dir := attach.SidecarDir(resPath)
+	derived := attach.Derive(e.placement(), root, el, resPath)
+	dir := e.placement().Dir(resPath)
 	var moves [][2]string
 	for pass, moved := 0, true; moved && pass < 8; pass++ {
 		moved = false
@@ -97,6 +100,9 @@ func (e *Env) placeAttachments(id, resPath string, root *xmltree.Node) ([][2]str
 				e.Atts.Put(l)
 			}
 		}
+	}
+	if e.Batch {
+		return moves, nil // saved with the index at the end of the batch
 	}
 	return moves, e.saveAtts()
 }
@@ -201,7 +207,7 @@ func (e *Env) sidecarFiles(fc changes.FileChange) []string {
 	if fc.Local == nil || fc.Local.Action == "" {
 		return nil
 	}
-	files, _, _ := e.Tree.ListSidecar(attach.SidecarDir(fc.Path))
+	files, _, _ := e.placement().List(e.Tree, fc.Path)
 	var out []string
 	for _, f := range files {
 		if _, isCopy := attach.ConflictOriginal(path.Base(f)); !isCopy && !strings.HasPrefix(path.Base(f), ".") {

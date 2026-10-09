@@ -2,11 +2,13 @@
 package changes
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
+	"github.com/KrzysztofBogdan/gitfs/internal/attach"
 	"github.com/KrzysztofBogdan/gitfs/internal/envelope"
 	"github.com/KrzysztofBogdan/gitfs/internal/validate"
 	"github.com/KrzysztofBogdan/gitfs/internal/workdir"
@@ -37,13 +39,19 @@ func Compute(t *workdir.Tree, ix *workdir.Index, ad adapter.Adapter, filter func
 	if err != nil {
 		return nil, err
 	}
-	ac := &attCtx{t: t, atts: atts, ad: ad, e: s.Attachment(), claimed: map[string]bool{}}
+	ac := &attCtx{t: t, atts: atts, ad: ad, e: s.Attachment(), claimed: map[string]bool{},
+		pl: attach.PlacementOf(ad), files: map[string]bool{}, dirs: map[string][]string{}}
+	var others []string // placed mode: files outside the resource folder
 	var out []FileChange
 	seen := map[string]string{} // id -> path
 	for _, p := range files {
 		data, err := t.ReadFile(p)
 		if err != nil {
 			return nil, err
+		}
+		if !ac.pl.IsResource(p) {
+			others = append(others, p)
+			continue
 		}
 		fc := FileChange{Path: p}
 		byPath, inIndex := ix.ByPath(p)
@@ -142,6 +150,14 @@ func Compute(t *workdir.Tree, ix *workdir.Index, ad adapter.Adapter, filter func
 		return nil, err
 	}
 	out = append(out, orphans...)
+	for _, l := range atts.All() {
+		ac.files[l.Path] = true // tracked, even when its resource file is gone
+	}
+	for _, p := range others {
+		if !ac.files[p] {
+			out = append(out, FileChange{Status: '!', Path: p, Err: errors.New("not part of the mirror; gfs does not track it (move it elsewhere)")})
+		}
+	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	if filter == nil {
 		return out, nil

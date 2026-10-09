@@ -72,10 +72,16 @@ func (e *Env) getItems(targets []string, el *schema.Elem) ([]getItem, []string, 
 		if err != nil {
 			return nil, nil, err
 		}
-		derived := attach.Derive(root, el, wp)
+		pl := e.placement()
+		derived := attach.Derive(pl, root, el, wp)
 		els := attach.Elements(root, el)
-		sd := attach.SidecarDir(wp)
-		whole := func(t string) bool { return t == "" || t == wp || t == sd || strings.HasPrefix(wp, t+"/") }
+		sd := pl.Dir(wp)
+		whole := func(t string) bool {
+			if pl.Placed() { // a placed folder is shared: it selects the attachments under it
+				return t == "" || t == wp || strings.HasPrefix(wp, t+"/")
+			}
+			return t == "" || t == wp || t == sd || strings.HasPrefix(wp, t+"/")
+		}
 		for _, t := range targets {
 			if whole(t) {
 				matched[t] = true
@@ -88,7 +94,8 @@ func (e *Env) getItems(targets []string, el *schema.Elem) ([]getItem, []string, 
 				tracked = l.Path
 			}
 			for _, t := range targets {
-				if !whole(t) && t != p && t != tracked {
+				under := pl.Placed() && t != "" && (strings.HasPrefix(p, t+"/") || strings.HasPrefix(tracked, t+"/"))
+				if !whole(t) && !under && t != p && t != tracked {
 					continue
 				}
 				matched[t] = true
@@ -117,6 +124,9 @@ func (e *Env) workingPaths() (map[string]string, error) {
 	idAttr := e.Adapter.Schema().ID
 	out := map[string]string{}
 	for _, p := range files {
+		if !e.placement().IsResource(p) {
+			continue
+		}
 		data, err := e.Tree.ReadFile(p)
 		if err != nil {
 			return nil, err
