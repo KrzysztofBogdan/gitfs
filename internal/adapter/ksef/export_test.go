@@ -19,6 +19,7 @@ func addN(srv *kseftest.Server, subject string, n int, from time.Time) {
 func TestExportRole(t *testing.T) {
 	srv := kseftest.New()
 	t.Cleanup(srv.Close)
+	srv.PendingPolls = 2
 	addN(srv, "Subject2", 3, t0)
 	c := testClient(srv)
 	now := t0.Add(24 * time.Hour)
@@ -35,7 +36,7 @@ func TestExportRole(t *testing.T) {
 	if !next.Equal(now.Add(-2 * time.Minute)) {
 		t.Fatalf("continue from the HWM: %v", next)
 	}
-	if srv.Count("POST /invoices/exports") != 1 || srv.Count("GET /invoices/ksef/") != 0 {
+	if srv.Count("POST /invoices/exports") != 1 || srv.Count("GET /invoices/exports/") != 3 || srv.Count("GET /invoices/ksef/") != 0 {
 		t.Fatal(srv.Requests())
 	}
 }

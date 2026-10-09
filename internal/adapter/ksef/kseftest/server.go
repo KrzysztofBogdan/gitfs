@@ -35,6 +35,7 @@ type Server struct {
 	ExportFail    string           // exports finish with this failure description
 	ExportFailFor string           // only exports of this subject type fail ("": all)
 	DamagePart    bool             // the last part of each package is served damaged
+	PendingPolls  int              // status polls of each export answered "in progress" first
 
 	mu         sync.Mutex
 	requests   []string

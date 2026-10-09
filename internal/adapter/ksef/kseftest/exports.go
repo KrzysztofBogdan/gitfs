@@ -229,7 +229,7 @@ func (s *Server) exportStatus(w http.ResponseWriter, ref string) {
 		http.NotFound(w, nil)
 		return
 	}
-	if j.polls++; j.polls == 1 {
+	if j.polls++; j.polls <= s.PendingPolls {
 		writeJSON(w, 200, map[string]any{"status": map[string]any{"code": 100, "description": "Eksport faktur w toku"}})
 		return
 	}
