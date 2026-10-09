@@ -1,10 +1,10 @@
 # KSeF invoices design: read-only mirror of a company's e-invoices
 
-Status: design approved in conversation 2026-10-09. Date: 2026-10-09.
+Status: design approved in conversation 2026-10-09; updated to match the build (plan `2026-10-09-ksef-invoices.md`). Date: 2026-10-09.
 Adds a read-only `ksef` adapter (`ksef://`) for KSeF 2.0, the Polish
-national e-invoicing system, and two engine features: attachments placed
-outside `X.files/` (§2.1) and attachment bytes delivered by a listing
-(§2.2). Builds on `2026-09-23-gfs-cli-design.md`,
+national e-invoicing system, and three engine features: attachments placed
+outside `X.files/` (§2.1), attachment bytes delivered by a listing (§2.2)
+and read-only adapters (§2.3). Builds on `2026-09-23-gfs-cli-design.md`,
 `2026-09-23-gfs-attachments-design.md` and
 `2026-09-24-gfs-credentials-design.md`.
 
@@ -54,7 +54,7 @@ the mirror only grows: a pull adds new invoices and never re-reads old ones.
 |---------|------|
 | `internal/adapter/ksef` (new) | the adapter: URL, client, auth, export, mapping, login |
 | `internal/adapter/ksef/kseftest` (new) | fake KSeF API (§10.1) |
-| `internal/adapter` | new optional interface `Placer` (§2.1); `Resource.Files` (§2.2) |
+| `internal/adapter` | new optional interfaces `Placer` (§2.1) and `ReadOnly` (§2.3); `Resource.Files` (§2.2) |
 | `internal/attach` | `SidecarDir` and its inverse go through a `Placement` value built from the adapter |
 | `internal/workdir` | `Scan` takes the placement: with a `Placer`, resources are the files under `ResourceDir()` |
 | `internal/changes` | `Compute` classifies files outside `ResourceDir()` through `ResourceOf`; attachment claims use the placement |
@@ -88,8 +88,13 @@ type Placer interface {
 * With a `Placer`: `Scan` lists resource files under `ResourceDir()` only
   (`*.files` folders there are still skipped). A file outside it is an
   attachment when `ResourceOf` maps it to a resource file that exists,
-  otherwise an untracked stray: `status` prints it as
-  `?  <path>   not a KSeF invoice (gfs ignores it)` and `commit` ignores it.
+  otherwise a stray: `status` prints it as
+  `!  <path>   invalid: not part of the mirror; gfs does not track it (move it elsewhere)`,
+  and `commit` reports it as invalid, like a sidecar folder without its
+  resource today. A tracked attachment whose resource file was deleted is
+  not a stray.
+* Each shared placed folder is listed once per `status`, not once per
+  resource; tracking lines are saved once per batch.
 * De-duplication within a sidecar (attachments spec §3.2) applies per
   resource as before; KSeF has one attachment per resource.
 
@@ -110,7 +115,24 @@ type Resource struct {
 * An attachment element without bytes in `Files` stays not fetched, as
   today. Adapters that never set `Files` are unaffected.
 * A placed path occupied by an untracked file is the existing "untracked
-  collision" case: reported, nothing overwritten.
+  collision" case: reported, nothing overwritten. A tracked file changed
+  locally is kept and reported.
+
+### 2.3 Read-only adapters (`ReadOnly`)
+
+```go
+// ReadOnly is implemented by adapters whose resources cannot be changed.
+type ReadOnly interface{ ReadOnly() string }
+```
+
+* `changes.Compute` sets the message as the error of every new, changed,
+  moved or deleted resource file, so `status` shows it and `commit` refuses
+  the file before any remote call (commit fetches before applying, and a
+  read-only service may not support fetching: a refused delete must never
+  forget the resource).
+* `pull --force` rewrites changed, moved and deleted resource files from
+  their base copies, with no remote call: a read-only service's listings
+  need not list known resources again. New files have no base and stay.
 
 ## 3. Remote URL and selection
 
@@ -178,7 +200,7 @@ ksef-6887603807/
 ## 5. File format
 
 ```xml
-<invoice ksef="5261040828-20261003-0A12BC340000-7F" role="received" version="qAdJRK0E1++A1QWRGVeSOC/TAdSIvdeH1zIwsQKAm5I=">
+<invoice id="received/5261040828-20261003-0A12BC340000-7F" ksef="5261040828-20261003-0A12BC340000-7F" role="received" version="qAdJRK0E1++A1QWRGVeSOC/TAdSIvdeH1zIwsQKAm5I=">
   <number>FA/123/10/2026</number>
   <type>Vat</type>
   <form>FA (3)</form>
@@ -200,6 +222,7 @@ Every field comes from KSeF's `InvoiceMetadata` (export `_metadata.json`):
 
 | element / attribute | `InvoiceMetadata` |
 |---|---|
+| `@id` | `<role>/<ksefNumber>`: the engine identity (an invoice can be in two roles) |
 | `@ksef`, `@version` | `ksefNumber`, `invoiceHash` |
 | `number`, `type` | `invoiceNumber`, `invoiceType` (KSeF's value as is: `Vat`, `Kor`, `Zal`, …) |
 | `form` | `formCode.systemCode` |
@@ -216,10 +239,11 @@ Every field comes from KSeF's `InvoiceMetadata` (export `_metadata.json`):
 * Optional elements are absent when KSeF gives no value. Unknown future
   metadata fields are ignored.
 * `version` is the `invoiceHash`. It never changes (§6.4).
-* The whole resource and its attachment are read-only. `Check` refuses any
-  change: an edited or new metadata file, an edited, new or deleted
-  original, a deleted metadata file:
-  `KSeF invoices are read-only`. `status` shows them with that note.
+* The whole resource and its attachment are read-only (§2.3): an edited,
+  new or deleted metadata file is refused with `KSeF invoices are
+  read-only`; an edited or new original with `attachments of this resource
+  are read-only`. A deleted original is "evicted" like any attachment
+  (silent in `status`) and `gfs get` downloads it again.
 * The schema (`schema.go`, `relaxng.go`) declares `<invoice>`, every
   attribute service-owned, and `original` as `schema.Attachment`.
 
@@ -245,14 +269,17 @@ selected role:
    ZIP, check that its SHA-256 equals `invoiceHash`, build the resource
    (§5) with the bytes in `Files["fa"]`.
 
-The exports of the selected roles start together and are polled together
-(KSeF allows 10 concurrent exports per context).
+The roles are exported one after another (KSeF would allow 10 concurrent
+exports per context; gfs does not need them).
 
 ### 6.2 Windows
 
 * **Full listing** (clone, `pull --full`, a role new to the selection):
-  from `since` to now in windows of at most 100 days (KSeF's `dateRange`
-  limit, UTC). Every window but the last has `to`; the last omits it.
+  from `since` to now in windows of at most 90 days (KSeF's `dateRange`
+  limit is 100 days in UTC or Polish time; 90 leaves room). A window is
+  closed (has `to`) only when it ends more than an hour before now; the
+  last one omits `to`, so the HWM bounds it and no invoice between the HWM
+  and a near-now window end is skipped.
 * **Incremental listing:** one window per role from the role's cursor,
   without `to`.
 * A package with `isTruncated` (10,000 invoices or 1 GB compressed) is
@@ -280,9 +307,10 @@ old cursor; invoices from exports already finished are not written
 * `Fetch` returns `adapter.ErrNotFound`: listings always carry full
   content, so the engine never needs it.
 * An edited or deleted metadata file is restored from the engine's base
-  copy by `gfs pull --force` (no KSeF request). An edited or deleted
-  original is downloaded again with `gfs get <path>`:
-  `Download` calls `GET /invoices/ksef/<n>` and checks the hash.
+  copy by `gfs pull --force` (§2.3, no KSeF request). A deleted original is
+  downloaded again with `gfs get <path>` (an edited one: delete it first):
+  `Download` calls `GET /invoices/ksef/<n>` and checks it against the
+  `X-Ms-Meta-Hash` header.
 * `pull --full` re-runs every window from `since`; with the skip above it
   only adds invoices missing locally (an earlier `since`, a lost cursor).
 
@@ -346,9 +374,9 @@ the KSeF token is stored.
 
 ## 8. Commit
 
-Nothing is ever sent. `Check` returns a refusal for every action
-(`KSeF invoices are read-only`); `Apply` is never reached. `Verbs()` is
-empty. `gfs commit` in a clone with no local changes says
+Nothing is ever sent. The adapter is `ReadOnly` (§2.3): the engine refuses
+every change before calling the adapter. `Check` and `Apply` refuse every
+action too, as a second line. `Verbs()` is empty. `gfs commit` in a clone with no local changes says
 `nothing to commit`.
 
 ## 9. Errors
@@ -356,17 +384,18 @@ empty. `gfs commit` in a clone with no local changes says
 | case | message |
 |---|---|
 | 401, expired or revoked token | KSeF's description + `(run gfs auth login ksef://<host>/<nip>)` |
-| 403, token without InvoiceRead | `the KSeF token lacks the InvoiceRead permission` + login hint |
+| 403, token without InvoiceRead | KSeF's message + `(does the KSeF token have the InvoiceRead permission?)` + login hint |
 | auth status ≥ 400 | KSeF's `status.description` and `details` |
-| 429 | wait `Retry-After` (§6.5); still limited after the retry policy gives up: KSeF's message and when to retry |
+| 429 | wait `Retry-After` (§6.5); a wait beyond the retry policy's 5 minutes fails with KSeF's message and `KSeF asks to retry after <n> s` |
 | export status ≥ 400 | `export of <role> from <from>: <description>` |
 | part hash mismatch, bad padding, bad ZIP | `export of <role>: package part <n> is damaged`; nothing from it is written |
 | original hash ≠ `invoiceHash` | `invoice <ksef>: content does not match KSeF's hash`; the listing fails |
 | 5xx, network | reads retry by the shared policy (at most 6 attempts, 5 minutes) |
 
-Errors may be requested as `application/problem+json` with
-`X-Error-Format: problem-details`; the client sends it and reads `title`,
-`detail` and `errors` *(verify the shape)*.
+Errors are read in KSeF's default shapes: `ExceptionResponse`
+(`exceptionDetailList[]`: description, code, details), `problem+json`
+(`title`, `detail`) for 401/403, and the `status` object of a 429. No
+`X-Error-Format` header is sent.
 
 ## 10. Testing
 
@@ -422,10 +451,16 @@ invoice stored 2 minutes earlier and included it 2 minutes later. No
 `ETag` headers. Export parts are pre-signed blob URLs needing no bearer
 token.
 
+Real-site check (2026-10-09, TEST, `TestRealTEST`, 256 s): self-signed
+XAdES login, KSeF token created and used by the session, two FA(3) invoices
+(our own `testdata/invoice-fa3.xml`, valid against the FA(3) XSD) sent; the
+first listing returned the first invoice byte for byte, the incremental
+listing from its cursor only the second, and `Download` the same bytes.
+
 ## 11. Docs
 
 * `gfs help ksef`: URL forms, roles and layout, getting a token, the limits
   arithmetic (§6.5), immutability and restoring files.
 * `start.md`: a KSeF section next to the other adapters.
 * Attachments spec: a note that `Placer` and `Resource.Files` extend §3.2
-  and the "automatic download" non-goal for adapters that need them.
+  and the "automatic download" non-goal for adapters that need them (done).

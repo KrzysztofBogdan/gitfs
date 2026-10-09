@@ -29,7 +29,8 @@ on demand; once fetched, an attachment syncs both ways like any other file.**
 * Merging binary content. Changed on both sides is a conflict with both
   copies kept.
 * Automatic download rules (by type or size). Can be added later on top of
-  `gfs get`.
+  `gfs get`. An adapter whose listing already holds the bytes may deliver them
+  (`Resource.Files`, ksef spec §2.2); pull writes them as if fetched.
 * Renaming attachments from the working tree (v1 warns, see 3.5).
 * Attachment version history. Only the current version is mirrored.
 
@@ -104,6 +105,10 @@ Reserved suffix: a resource whose derived file name would end in `.files`
 before `.xml` gets `_` appended (`Foo.files_.xml`), so its sidecar can never
 be mistaken for a resource directory. Directory names ending in `.files` are
 not allowed for resources in `tree` path models for the same reason.
+
+Adapters may place attachment files elsewhere (`adapter.Placer`, ksef spec
+§2.1): KSeF keeps each original invoice beside its metadata tree instead of
+in a sidecar.
 
 ### 3.3 Tracking: `.gfs/attachments`
 
