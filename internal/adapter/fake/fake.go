@@ -605,3 +605,10 @@ func (*Placed) ResourceOf(p string) (string, bool) {
 	}
 	return "_m/" + dir + stem + ".xml", true
 }
+
+// Frozen is Placed with read-only resources (ksef spec §8).
+type Frozen struct{ *Placed }
+
+func NewFrozen() *Frozen { return &Frozen{NewPlaced()} }
+
+func (*Frozen) ReadOnly() string { return "notes are read-only" }

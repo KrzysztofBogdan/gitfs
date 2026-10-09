@@ -158,6 +158,13 @@ func Compute(t *workdir.Tree, ix *workdir.Index, ad adapter.Adapter, filter func
 			out = append(out, FileChange{Status: '!', Path: p, Err: errors.New("not part of the mirror; gfs does not track it (move it elsewhere)")})
 		}
 	}
+	if ro, ok := ad.(adapter.ReadOnly); ok {
+		for i := range out {
+			if c := &out[i]; c.Err == nil && !c.Quiet && strings.ContainsRune("AMRD", rune(c.Status)) {
+				c.Err = errors.New(ro.ReadOnly())
+			}
+		}
+	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	if filter == nil {
 		return out, nil

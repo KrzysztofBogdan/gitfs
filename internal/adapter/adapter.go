@@ -198,6 +198,12 @@ type Linter interface {
 // or applying; the session owns what it writes there.
 type Cacher interface{ UseCache(dir string) }
 
+// ReadOnly is implemented by adapters whose resources cannot be changed
+// (ksef spec §8). The engine refuses every local change with the message
+// before any remote call, and pull --force restores changed files from the
+// base copy (listings of such services need not list known resources again).
+type ReadOnly interface{ ReadOnly() string }
+
 // Placer is implemented by adapters whose attachment files live outside the
 // X.files/ sidecar (ksef spec §2.1). Resource files are then only the files
 // under ResourceDir; any other file is an attachment of the resource

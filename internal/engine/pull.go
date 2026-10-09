@@ -47,6 +47,11 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 	if err != nil {
 		return r, err
 	}
+	if _, ro := e.Adapter.(adapter.ReadOnly); ro && o.Force {
+		if cs, err = e.restoreReadOnly(cs, o, &r); err != nil {
+			return r, err
+		}
+	}
 	localByID := map[string]changes.FileChange{}
 	deletedLocally := map[string]bool{}
 	for _, c := range cs {
@@ -74,7 +79,7 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 		}
 	}()
 	vanished := map[string]bool{} // listed, then not found: deleted on the remote meanwhile
-	printed := false
+	printed := r.Updated > 0      // files restored above
 	say := func(format string, a ...any) {
 		printed = true
 		fmt.Fprintf(e.Out, format+"\n", a...)
@@ -265,6 +270,35 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 		fmt.Fprintln(e.Out, "Already up to date.")
 	}
 	return r, nil
+}
+
+// restoreReadOnly rewrites the changed and deleted files of a read-only
+// adapter from their base copies (ksef spec §6.4) and returns the changes
+// left. A new file is left alone: it has no base.
+func (e *Env) restoreReadOnly(cs []changes.FileChange, o PullOpts, r *PullReport) ([]changes.FileChange, error) {
+	var left []changes.FileChange
+	for _, c := range cs {
+		restorable := c.ID != "" && !c.Quiet && strings.ContainsRune("MRD", rune(c.Status))
+		if !restorable || (o.Filter != nil && !o.Filter(c.Path) && !o.Filter(c.Entry.Path)) {
+			left = append(left, c)
+			continue
+		}
+		data, err := e.Tree.ReadBase(c.Entry.Path)
+		if err != nil {
+			return nil, err
+		}
+		if err := e.Tree.WriteFile(c.Entry.Path, data); err != nil {
+			return nil, err
+		}
+		if c.Path != c.Entry.Path && e.Tree.Exists(c.Path) {
+			if err := e.Tree.Remove(c.Path); err != nil {
+				return nil, err
+			}
+		}
+		r.Updated++
+		fmt.Fprintf(e.Out, "  ~  %s   (restored)\n", c.Entry.Path)
+	}
+	return left, nil
 }
 
 // listing is the session's listing, or with ids only those resources,
