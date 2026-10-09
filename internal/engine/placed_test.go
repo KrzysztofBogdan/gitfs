@@ -133,3 +133,30 @@ func TestListedFilesNeverOverwriteLocalEdits(t *testing.T) {
 		t.Fatal("a locally changed attachment is kept")
 	}
 }
+
+func TestPullErrorKeepsTracking(t *testing.T) {
+	ad := fake.NewPlaced()
+	ad.Remote.WithFiles = true
+	ad.Remote.Put("1", "_m/a/one.xml", `<note><title>One</title></note>`)
+	sess, _ := ad.Open(ctx, nil, nil)
+	var out bytes.Buffer
+	env, err := Clone(ctx, ad, sess, "fake://x", filepath.Join(t.TempDir(), "wt"), &out, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ad.Remote.Put("2", "_m/a/two.xml", `<note><title>Two</title></note>`)
+	ad.Remote.PutAttachment("2", "20", "y.png", []byte("def"))
+	ad.Remote.Put("3", "_m/b/three.xml", `<note><title>Three</title></note>`)
+	write(t, env, "_m/b/three.xml", "untracked") // makes the pull stop after storing two
+	env.Tree.Remove("_m/b/three.xml")
+	if err := env.Tree.WriteFile("_m/b", []byte("a file where a folder must go")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Pull(ctx, env, PullOpts{}); err == nil {
+		t.Fatal("the pull must fail on three")
+	}
+	fresh, _ := env.Tree.LoadAttachments()
+	if _, ok := fresh.Get("2", "20"); !ok {
+		t.Fatal("tracking lines written before the error are saved")
+	}
+}

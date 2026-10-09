@@ -37,8 +37,9 @@ func (r PullReport) ExitCode() int {
 func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 	e.Batch = true
 	defer func() {
+		serr := e.saveIndex(true) // while batching: also saves tracking lines
 		e.Batch = false
-		if serr := e.saveIndex(true); err == nil {
+		if err == nil {
 			err = serr
 		}
 	}()
