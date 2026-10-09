@@ -36,6 +36,9 @@ type Resource struct {
 	ID, Version, Path string
 	By, At            string        // last modifier and time, for <conflict>
 	Root              *xmltree.Node // nil in a listing stub
+	// Files are attachment bytes by attachment id that the listing already
+	// holds (ksef spec §2.2): Store writes and tracks them as if fetched.
+	Files map[string][]byte
 }
 
 type Action struct {
