@@ -27,6 +27,15 @@ type Server struct {
 	Token     string        // the accepted KSeF token
 	AccessTTL time.Duration // access token lifetime (default 15m)
 
+	// Exports. Set these before requests are made.
+	HWM           func() time.Time // permanentStorageHwmDate; default time.Now
+	TruncateAt    int              // a package holds at most this many invoices (0: no limit)
+	PartSize      int              // split packages into parts of this many bytes (0: one part)
+	Fail429       int              // the next n export starts answer 429 with Retry-After: 1
+	ExportFail    string           // exports finish with this failure description
+	ExportFailFor string           // only exports of this subject type fail ("": all)
+	DamagePart    bool             // the last part of each package is served damaged
+
 	mu         sync.Mutex
 	requests   []string
 	key        *rsa.PrivateKey
