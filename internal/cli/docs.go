@@ -6,6 +6,7 @@ import (
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/bitbucket"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/cloudns"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/jira"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/ksef"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/ovh"
 	"io/fs"
 	"sort"
@@ -32,6 +33,7 @@ func helpTopics() []*cobra.Command {
 		{Use: "confluence", Short: "Confluence Cloud: URL, layout, page files, what each change does", Long: doc("docs/confluence.md")},
 		{Use: "jira", Short: "Jira Cloud and service desk portals: URLs, files, transitions, what each change does", Long: doc("docs/jira.md")},
 		{Use: "bitbucket", Short: "Bitbucket Cloud: pull requests, pipeline runs, gfs tail, what each change does", Long: doc("docs/bitbucket.md")},
+		{Use: "ksef", Short: "KSeF e-invoices (Poland): URL, layout, tokens, limits; read-only", Long: doc("docs/ksef.md")},
 		{Use: "dns", Short: "DNS zones at OVH and ClouDNS: URLs, credentials, zone files, what each change does", Long: doc("docs/dns.md")},
 		{Use: "confluence-storage", Short: "Verified Confluence storage-format examples for page bodies", Long: doc("docs/confluence/storage.md")},
 	}
@@ -61,8 +63,10 @@ func newSchema() *cobra.Command {
 				fmt.Fprint(cmd.OutOrStdout(), cloudns.RelaxNG())
 			case "bitbucket":
 				fmt.Fprint(cmd.OutOrStdout(), bitbucket.RelaxNG())
+			case "ksef":
+				fmt.Fprint(cmd.OutOrStdout(), ksef.RelaxNG())
 			default:
-				return usage("unknown adapter %q: want confluence, jira, bitbucket, ovh or cloudns", args[0])
+				return usage("unknown adapter %q: want confluence, jira, bitbucket, ovh, cloudns or ksef", args[0])
 			}
 			return nil
 		},

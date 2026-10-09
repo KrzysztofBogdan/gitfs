@@ -32,3 +32,8 @@ func TestDocsCommands(t *testing.T) {
 	mustContain(t, mustRun(t, 2, "example", "confluence", "nope"), `unknown node "nope"`)
 	mustContain(t, mustRun(t, 2, "example", "confluence", "panel/nope"), `unknown variant "nope" of panel`)
 }
+
+func TestKSeFDocs(t *testing.T) {
+	mustContain(t, mustRun(t, 0, "schema", "ksef"), `<element name="original">`)
+	mustContain(t, mustRun(t, 0, "help", "ksef"), "ksef://ksef.mf.gov.pl/<nip>", "20 exports an hour")
+}

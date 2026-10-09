@@ -16,6 +16,7 @@ import (
 	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/cloudns"    // registers cloudns://
 	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/confluence" // registers confluence://
 	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/jira"       // registers jira://
+	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/ksef"       // registers ksef://
 	_ "github.com/KrzysztofBogdan/gitfs/internal/adapter/ovh"        // registers ovh://
 )
 
