@@ -43,18 +43,31 @@ func NewClient(base, nip, token string) *Client {
 // APIError is a KSeF refusal. Msg comes from KSeF; Hint is the command that
 // fixes credentials, shown for 401 and 403.
 type APIError struct {
-	Status  int
-	Op, Msg string
-	Hint    string
+	Status     int
+	Op, Msg    string
+	Hint       string
+	RetryAfter string // 429: seconds KSeF asks to wait
 }
 
 func (e *APIError) Error() string {
 	s := "ksef: " + e.Op + ": " + e.Msg
+	if e.Status == http.StatusForbidden {
+		s += " (does the KSeF token have the InvoiceRead permission?)"
+	}
+	if e.Status == http.StatusTooManyRequests && e.RetryAfter != "" {
+		s += "; KSeF asks to retry after " + e.RetryAfter + " s"
+	}
 	if e.Hint != "" && (e.Status == http.StatusUnauthorized || e.Status == http.StatusForbidden) {
 		s += " (run " + e.Hint + ")"
 	}
 	return s
 }
+
+// String hides the tokens: a Client may end up in %v output.
+func (c *Client) String() string { return "ksef.Client{" + c.Base + " NIP " + c.NIP + "}" }
+
+// GoString is String for %#v.
+func (c *Client) GoString() string { return c.String() }
 
 // apiMessage reads KSeF's three error shapes: ExceptionResponse (400),
 // problem+json (401, 403) and the status object (429).
@@ -150,7 +163,8 @@ func (c *Client) do(ctx context.Context, method, rawURL, bearer string, body []b
 		return nil, nil, fmt.Errorf("ksef: %s %s: %w", method, opName(u), err)
 	}
 	if resp.StatusCode >= 400 {
-		return resp, data, &APIError{Status: resp.StatusCode, Op: method + " " + opName(u), Msg: apiMessage(resp.StatusCode, data), Hint: c.LoginHint}
+		return resp, data, &APIError{Status: resp.StatusCode, Op: method + " " + opName(u), Msg: apiMessage(resp.StatusCode, data),
+			Hint: c.LoginHint, RetryAfter: resp.Header.Get("Retry-After")}
 	}
 	return resp, data, nil
 }

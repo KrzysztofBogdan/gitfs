@@ -2,6 +2,7 @@ package ksef
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -74,5 +75,27 @@ func TestAPIErrorShapes(t *testing.T) {
 		if got := apiMessage(500, []byte(body)); got != want {
 			t.Errorf("%s\n got %q\nwant %q", body, got, want)
 		}
+	}
+}
+
+func TestSecretsNeverPrinted(t *testing.T) {
+	c := NewClient("https://x", kseftest.NIP, "tok-secret")
+	c.accessTok, c.refreshTok = "acc-secret", "ref-secret"
+	tg := target{host: "ksef.mf.gov.pl", nip: kseftest.NIP, token: "tok-secret"}
+	for _, s := range []string{fmt.Sprintf("%v %+v %#v", c, c, c), fmt.Sprintf("%v %+v", tg, tg)} {
+		if strings.Contains(s, "secret") {
+			t.Fatal(s)
+		}
+	}
+}
+
+func TestErrorHints(t *testing.T) {
+	e := &APIError{Status: 403, Op: "POST /invoices/exports", Msg: "Forbidden", Hint: "gfs auth login ksef://x/1"}
+	if !strings.Contains(e.Error(), "InvoiceRead") {
+		t.Fatal(e)
+	}
+	e = &APIError{Status: 429, Op: "POST /invoices/exports", Msg: "Too Many Requests", RetryAfter: "1800"}
+	if !strings.Contains(e.Error(), "retry after 1800 s") {
+		t.Fatal(e)
 	}
 }

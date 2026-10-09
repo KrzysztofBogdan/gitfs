@@ -154,6 +154,11 @@ type target struct {
 	roles           []string
 }
 
+// String hides the token: a target may end up in %v output.
+func (t target) String() string {
+	return fmt.Sprintf("ksef://%s/%s roles=%v since=%q", t.host, t.nip, t.roles, t.since)
+}
+
 // parseTarget resolves the URL and the KSeF token (GFS_KSEF_TOKEN, then the
 // keyring entry ksef:<host>/<nip>).
 func parseTarget(u *url.URL, getenv func(string) string, store EntryStore) (target, error) {

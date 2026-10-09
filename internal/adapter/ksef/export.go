@@ -246,8 +246,10 @@ func (c *Client) export(ctx context.Context, subject string, from time.Time, to 
 func (c *Client) exportRole(ctx context.Context, subject string, from, now time.Time) (invs []invoice, next time.Time, err error) {
 	seen := map[string]bool{}
 	for {
+		// A window is closed only well before now: one ending past the HWM
+		// would skip the invoices between the two.
 		var to *time.Time
-		if end := from.Add(window); end.Before(now) {
+		if end := from.Add(window); end.Before(now.Add(-time.Hour)) {
 			to = &end
 		}
 		page, err := c.export(ctx, subject, from, to)

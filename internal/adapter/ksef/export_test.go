@@ -138,3 +138,15 @@ func TestExportDamaged(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowNearNowStaysOpen(t *testing.T) {
+	srv := kseftest.New()
+	t.Cleanup(srv.Close)
+	now := t0.Add(window + 30*time.Minute) // the window would end 30 minutes ago, past the HWM
+	if _, _, err := testClient(srv).exportRole(bg, "Subject1", t0, now); err != nil {
+		t.Fatal(err)
+	}
+	if ex := srv.Exports(); len(ex) != 1 || ex[0].To != "" {
+		t.Fatalf("a window ending within the hour is left open, so the HWM bounds it: %+v", ex)
+	}
+}
