@@ -84,8 +84,9 @@ address):
   in October 2026;
 * a pull takes 3 (one per role), so about 6 pulls an hour; the Ministry
   asks for at most one every 15 minutes;
-* when KSeF answers "too many requests", gfs waits as long as KSeF asks
-  (shown while it waits), or stops and says when to retry.
+* when KSeF answers "too many requests", gfs waits as long as KSeF asks,
+  up to about an hour, and shows the wait: a large first clone takes hours
+  rather than failing. A longer block stops it with when to retry.
 
 KSeF makes an invoice available to exports about 2 minutes after it
 accepts it: an invoice sent a moment ago comes with the next pull.

@@ -386,7 +386,7 @@ action too, as a second line. `Verbs()` is empty. `gfs commit` in a clone with n
 | 401, expired or revoked token | KSeF's description + `(run gfs auth login ksef://<host>/<nip>)` |
 | 403, token without InvoiceRead | KSeF's message + `(does the KSeF token have the InvoiceRead permission?)` + login hint |
 | auth status ≥ 400 | KSeF's `status.description` and `details` |
-| 429 | wait `Retry-After` (§6.5); a wait beyond the retry policy's 5 minutes fails with KSeF's message and `KSeF asks to retry after <n> s` |
+| 429 | wait `Retry-After` (§6.5): the shared policy waits up to 5 minutes; an export start also waits out up to 65 minutes, three times (the hourly limit of a large clone); longer fails with KSeF's message and `KSeF asks to retry after <n> s` |
 | export status ≥ 400 | `export of <role> from <from>: <description>` |
 | part hash mismatch, bad padding, bad ZIP | `export of <role>: package part <n> is damaged`; nothing from it is written |
 | original hash ≠ `invoiceHash` | `invoice <ksef>: content does not match KSeF's hash`; the listing fails |

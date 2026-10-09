@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -118,6 +119,32 @@ type exportStatus struct {
 	} `json:"package"`
 }
 
+// maxLimitWait is the longest Retry-After an export start waits out: KSeF's
+// export limit is per hour (ksef spec §6.5).
+const maxLimitWait = 65 * time.Minute
+
+// startExport is POST /invoices/exports. A 429 longer than the shared retry
+// policy waits (the hourly limit of a large clone) is waited out, at most
+// three times, so a clone takes longer instead of failing and starting over.
+func (c *Client) startExport(ctx context.Context, req any, out any) error {
+	for attempt := 1; ; attempt++ {
+		err := c.json(ctx, http.MethodPost, "/invoices/exports", true, req, out)
+		var ae *APIError
+		if !errors.As(err, &ae) || ae.Status != http.StatusTooManyRequests || attempt > 3 {
+			return err
+		}
+		n, perr := strconv.Atoi(ae.RetryAfter)
+		d := time.Duration(n) * time.Second
+		if perr != nil || n <= 0 || d > maxLimitWait {
+			return err
+		}
+		c.OnWait(fmt.Sprintf("KSeF export limit reached, waiting %d min…", (n+59)/60))
+		if err := c.Sleep(ctx, d); err != nil {
+			return err
+		}
+	}
+}
+
 // export runs one export (ksef spec §6.1) and returns its invoices, each
 // checked against KSeF's hash.
 func (c *Client) export(ctx context.Context, subject string, from time.Time, to *time.Time) (exportPage, error) {
@@ -145,7 +172,7 @@ func (c *Client) export(ctx context.Context, subject string, from time.Time, to 
 	var started struct {
 		ReferenceNumber string `json:"referenceNumber"`
 	}
-	if err := c.json(ctx, http.MethodPost, "/invoices/exports", true, req, &started); err != nil {
+	if err := c.startExport(ctx, req, &started); err != nil {
 		return fail(err)
 	}
 	var st exportStatus

@@ -164,7 +164,7 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startExport(w http.ResponseWriter, r *http.Request) {
 	if s.Fail429 > 0 {
 		s.Fail429--
-		w.Header().Set("Retry-After", "1")
+		w.Header().Set("Retry-After", strconv.Itoa(max(s.RetryAfter, 1)))
 		writeJSON(w, 429, map[string]any{"status": map[string]any{"code": 429, "description": "Too Many Requests",
 			"details": []string{"Przekroczono limit 20 żądań na godzinę."}}})
 		return

@@ -1,6 +1,7 @@
 package ksef
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -149,5 +150,24 @@ func TestWindowNearNowStaysOpen(t *testing.T) {
 	}
 	if ex := srv.Exports(); len(ex) != 1 || ex[0].To != "" {
 		t.Fatalf("a window ending within the hour is left open, so the HWM bounds it: %+v", ex)
+	}
+}
+
+func TestExportWaitsOutHourlyLimit(t *testing.T) {
+	srv := kseftest.New()
+	t.Cleanup(srv.Close)
+	srv.Fail429, srv.RetryAfter = 1, 1800 // the hourly limit: longer than the shared retry policy waits
+	addN(srv, "Subject1", 1, t0)
+	c := testClient(srv)
+	var slept time.Duration
+	c.Sleep = func(_ context.Context, d time.Duration) error { slept += d; return nil }
+	var waits []string
+	c.OnWait = func(m string) { waits = append(waits, m) }
+	invs, _, err := c.exportRole(bg, "Subject1", t0.Add(-time.Hour), t0.Add(time.Hour))
+	if err != nil || len(invs) != 1 {
+		t.Fatalf("a clone waits for the export limit instead of failing: %v", err)
+	}
+	if slept < 1800*time.Second || len(waits) == 0 || !strings.Contains(waits[len(waits)-1], "30 min") {
+		t.Fatalf("slept %v, told %v", slept, waits)
 	}
 }

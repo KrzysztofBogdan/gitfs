@@ -31,11 +31,12 @@ type Server struct {
 	HWM           func() time.Time // permanentStorageHwmDate; default time.Now
 	TruncateAt    int              // a package holds at most this many invoices (0: no limit)
 	PartSize      int              // split packages into parts of this many bytes (0: one part)
-	Fail429       int              // the next n export starts answer 429 with Retry-After: 1
-	ExportFail    string           // exports finish with this failure description
-	ExportFailFor string           // only exports of this subject type fail ("": all)
-	DamagePart    bool             // the last part of each package is served damaged
-	PendingPolls  int              // status polls of each export answered "in progress" first
+	Fail429       int              // the next n export starts answer 429 with Retry-After (seconds, default 1)
+	RetryAfter    int
+	ExportFail    string // exports finish with this failure description
+	ExportFailFor string // only exports of this subject type fail ("": all)
+	DamagePart    bool   // the last part of each package is served damaged
+	PendingPolls  int    // status polls of each export answered "in progress" first
 
 	mu         sync.Mutex
 	requests   []string
