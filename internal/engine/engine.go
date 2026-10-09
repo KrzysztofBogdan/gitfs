@@ -3,10 +3,12 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
+	"github.com/KrzysztofBogdan/gitfs/internal/attach"
 	"github.com/KrzysztofBogdan/gitfs/internal/envelope"
 	"github.com/KrzysztofBogdan/gitfs/internal/workdir"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
@@ -56,7 +58,53 @@ func (e *Env) Store(res *adapter.Resource, oldPath string) error {
 			return err
 		}
 	}
-	return e.StoreBase(res, oldPath)
+	if err := e.StoreBase(res, oldPath); err != nil {
+		return err
+	}
+	return e.storeFiles(res)
+}
+
+// storeFiles writes the attachment bytes a listing delivered and tracks them
+// as if fetched (ksef spec §2.2). A tracked file changed locally is kept.
+func (e *Env) storeFiles(res *adapter.Resource) error {
+	el := e.attachmentElem()
+	if len(res.Files) == 0 || el == nil {
+		return nil
+	}
+	derived := attach.Derive(e.placement(), res.Root, el, res.Path)
+	els := attach.Elements(res.Root, el)
+	for _, id := range sortedIDs(derived) {
+		data, ok := res.Files[id]
+		if !ok {
+			continue
+		}
+		p := derived[id]
+		if l, tracked := e.Atts.Get(res.ID, id); tracked && e.Tree.Exists(l.Path) {
+			changed, err := attach.Changed(e.Tree, l.Path, l)
+			if err != nil {
+				return err
+			}
+			if changed {
+				fmt.Fprintf(e.Out, "  !  %s   changed locally; kept\n", l.Path)
+				continue
+			}
+		} else if !tracked && e.Tree.Exists(p) {
+			fmt.Fprintf(e.Out, "  !  %s   exists locally and is not tracked; skipped\n", p)
+			continue
+		}
+		if err := e.Tree.WriteFile(p, data); err != nil {
+			return err
+		}
+		line, err := attach.Entry(e.Tree, res.ID, id, attach.Version(els[id], el), p)
+		if err != nil {
+			return err
+		}
+		e.Atts.Put(line)
+	}
+	if e.Batch {
+		return nil // saved with the index
+	}
+	return e.saveAtts()
 }
 
 func (e *Env) StoreBase(res *adapter.Resource, oldPath string) error {

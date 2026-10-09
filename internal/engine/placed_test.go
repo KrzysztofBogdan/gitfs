@@ -80,3 +80,56 @@ func TestPlacedOrphanIsNotStray(t *testing.T) {
 		}
 	}
 }
+
+func TestListingDeliversFiles(t *testing.T) {
+	ad := fake.NewPlaced()
+	ad.Remote.WithFiles = true
+	ad.Remote.Put("1", "_m/a/one.xml", `<note><title>One</title></note>`)
+	ad.Remote.PutAttachment("1", "10", "x.png", []byte("abc"))
+	sess, _ := ad.Open(ctx, nil, nil)
+	var out bytes.Buffer
+	env, err := Clone(ctx, ad, sess, "fake://x", filepath.Join(t.TempDir(), "wt"), &out, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read(t, env, "a/one.x.png") != "abc" || ad.Remote.Downloads != 0 {
+		t.Fatal("bytes from the listing are written without a download")
+	}
+	if l, ok := env.Atts.Get("1", "10"); !ok || l.Path != "a/one.x.png" || l.Version != "1" {
+		t.Fatalf("tracked as fetched: %+v", l)
+	}
+	if cs := status(t, env); len(cs) != 0 {
+		t.Fatalf("%+v", cs)
+	}
+	ad.Remote.Put("2", "_m/a/two.xml", `<note><title>Two</title></note>`)
+	ad.Remote.PutAttachment("2", "20", "y.png", []byte("def"))
+	pull(t, env, PullOpts{})
+	if read(t, env, "a/two.y.png") != "def" {
+		t.Fatal("pull writes listed bytes of a new resource")
+	}
+	fresh, _ := env.Tree.LoadAttachments()
+	if _, ok := fresh.Get("2", "20"); !ok {
+		t.Fatal(".gfs/attachments saved at the end of the batch")
+	}
+}
+
+func TestListedFilesNeverOverwriteLocalEdits(t *testing.T) {
+	ad := fake.NewPlaced()
+	ad.Remote.WithFiles = true
+	ad.Remote.Put("1", "_m/a/one.xml", `<note><title>One</title></note>`)
+	ad.Remote.PutAttachment("1", "10", "x.png", []byte("abc"))
+	sess, _ := ad.Open(ctx, nil, nil)
+	var out bytes.Buffer
+	env, err := Clone(ctx, ad, sess, "fake://x", filepath.Join(t.TempDir(), "wt"), &out, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, env, "a/one.x.png", "mine")
+	res, _ := ad.Remote.Get("1")
+	if err := env.Store(res, ""); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, env, "a/one.x.png") != "mine" {
+		t.Fatal("a locally changed attachment is kept")
+	}
+}

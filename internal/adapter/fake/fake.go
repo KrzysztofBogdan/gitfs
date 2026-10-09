@@ -58,6 +58,7 @@ type Remote struct {
 	Cursors      []string         // cursor passed to each List call
 	Partial      bool             // List returns Full: false
 	FullDirs     []string         // returned as Listing.FullDirs
+	WithFiles    bool             // listed resources carry their attachment bytes (Resource.Files)
 	CacheDir     string           // last UseCache argument
 	Advice       map[string]adapter.Advice
 	CheckDetail  map[string]string        // "verb group" -> Result.Detail from Check
@@ -186,8 +187,15 @@ func (r *Remote) resource(id string, rec *record) *adapter.Resource {
 			{Name: "id", Value: a.id}, {Name: "name", Value: a.name}, {Name: "size", Value: strconv.Itoa(len(a.data))},
 			{Name: "version", Value: strconv.Itoa(a.version)}, {Name: "created", Value: a.created}}})
 	}
-	return &adapter.Resource{ID: id, Version: strconv.Itoa(rec.version), Path: rec.path,
+	res := &adapter.Resource{ID: id, Version: strconv.Itoa(rec.version), Path: rec.path,
 		By: rec.by, At: "2026-09-23T12:00:00Z", Root: root}
+	if r.WithFiles {
+		res.Files = map[string][]byte{}
+		for _, a := range rec.atts {
+			res.Files[a.id] = a.data
+		}
+	}
+	return res
 }
 
 type Adapter struct {
