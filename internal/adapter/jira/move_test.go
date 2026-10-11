@@ -157,12 +157,81 @@ func TestMoveEditedStatus(t *testing.T) {
 	srv, s := moveSite(t)
 	req := moved(t, srv, s, "GEN-1", "ops", func(r *xmltree.Node) { setText(r, "status", "Done") })
 	req.Actions = append(req.Actions, adapter.Action{Verb: "update", Group: "status"})
+	if c := s.Check(bg, req); c[0].Err != nil || c[0].Detail != "move to OPS as Task, status To Do, then transition to Done" {
+		t.Fatalf("%+v", c[0])
+	}
 	got := s.Apply(bg, req)
 	if got[0].Err != nil || got[1].Err != nil || srv.Issue(srv.ID("OPS-1")).Status != "Done" {
 		t.Fatalf("%+v", got)
 	}
-	if srv.Count("POST", "/rest/api/3/issue/") != 0 {
-		t.Fatal("the move sets the status; no transition")
+	if !strings.Contains(strings.Join(srv.MoveBodies, ""), `"1":["1"]`) || srv.Count("POST", "/rest/api/3/issue/"+srv.ID("OPS-1")+"/transitions") != 1 {
+		t.Fatal("move keeps the status, then the workflow's transition runs (resolution, post-functions)")
+	}
+}
+
+func TestMoveRefusesTransitionsBlock(t *testing.T) {
+	srv, s := moveSite(t)
+	req := moved(t, srv, s, "GEN-1", "ops", func(r *xmltree.Node) {
+		setText(r, "status", "Done")
+		r.Children = append(r.Children, parse(t, `<transitions><transition>In Progress</transition></transitions>`))
+	})
+	got := s.Check(bg, req)
+	if got[0].Err == nil || got[0].Err.Error() != "a <transitions> block cannot ride on a move: commit the move first, then the steps" {
+		t.Fatalf("%+v", got[0])
+	}
+}
+
+func TestMoveKeepsWhatJiraKept(t *testing.T) {
+	srv, s := moveSite(t)
+	srv.SetFields("OPS", "1", append(srv.Fields("OPS", "1"),
+		jtest.Field{ID: "customfield_10080", Name: "Area", Type: "string", Custom: typeText, Required: true, Default: true})...)
+	got := s.Apply(bg, moved(t, srv, s, "GEN-1", "ops", nil))
+	if got[0].Err != nil || srv.Issue(srv.ID("OPS-1")).Fields["customfield_10080"] != "default" {
+		t.Fatalf("%+v %+v", got, srv.Issue(srv.ID("OPS-1")).Fields)
+	}
+	if n := srv.Count("PUT", "/rest/api/3/issue/"); n != 0 {
+		t.Fatalf("%d edits after a move the file asked nothing more of", n)
+	}
+}
+
+func TestMoveFailsAfterTheMove(t *testing.T) {
+	srv, s := moveSite(t)
+	id := srv.ID("GEN-1")
+	srv.AfterMove = func() { srv.Fail["GET /rest/api/3/issue/"+id] = 500 }
+	req := moved(t, srv, s, "GEN-1", "ops", func(r *xmltree.Node) { setText(r, "summary", "x") })
+	req.Actions = append(req.Actions, adapter.Action{Verb: "update", Group: "summary"})
+	got := s.Apply(bg, req)
+	if got[0].Err != nil || len(got[0].Refresh) != 1 {
+		t.Fatalf("the move happened: %+v", got[0])
+	}
+	if got[1].Err == nil || !strings.HasPrefix(got[1].Err.Error(), "moved to OPS, then: ") {
+		t.Fatalf("%+v", got[1])
+	}
+}
+
+func TestMoveTaskCompleteButNotMoved(t *testing.T) {
+	srv, s := moveSite(t)
+	srv.MoveSkip = true
+	got := s.Apply(bg, moved(t, srv, s, "GEN-1", "ops", nil))
+	if got[0].Err == nil || got[0].Err.Error() != "Jira finished the move task, but GEN-1 is still in GEN" {
+		t.Fatalf("%+v", got[0])
+	}
+}
+
+func TestMoveWaitReportsSparingly(t *testing.T) {
+	srv, s := moveSite(t)
+	srv.MoveRunning = 12 // about 6 s of polling
+	var waits []string
+	s.SetProgress(func(p adapter.Progress) {
+		if p.Phase == "wait" {
+			waits = append(waits, p.Item)
+		}
+	})
+	if got := s.Apply(bg, moved(t, srv, s, "GEN-1", "ops", nil)); got[0].Err != nil {
+		t.Fatal(got[0].Err)
+	}
+	if len(waits) != 2 || waits[0] != "moving GEN-1 to OPS" || waits[1] != "moving GEN-1 to OPS (5s)" {
+		t.Fatalf("%q", waits)
 	}
 }
 

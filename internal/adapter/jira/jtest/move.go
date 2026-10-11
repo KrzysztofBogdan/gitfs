@@ -36,6 +36,9 @@ type moveGroup struct {
 // sub-tasks at once; the task only reports.
 func (s *Server) bulkMove(w http.ResponseWriter, r *http.Request) {
 	raw, _ := io.ReadAll(r.Body)
+	if s.AfterMove != nil {
+		defer s.AfterMove() // runs after the deferred unlock below
+	}
 	var body struct {
 		Mapping map[string]moveGroup `json:"targetToSourcesMapping"`
 	}
@@ -92,7 +95,7 @@ func (s *Server) bulkMove(w http.ResponseWriter, r *http.Request) {
 	}
 	id := s.nextID()
 	t := &moveTask{running: s.MoveRunning, fail: s.MoveFail}
-	if t.fail == "" {
+	if t.fail == "" && !s.MoveSkip {
 		for _, j := range jobs {
 			t.processed = append(t.processed, s.moveIssue(j.is, j.p, j.typ, j.status)...)
 		}
@@ -169,6 +172,11 @@ func (s *Server) relocate(is *Issue, p *Project, typ, status string) {
 	fields := map[string]Field{}
 	for _, f := range s.fields[p.Key+"/"+typ] {
 		fields[f.ID] = f
+	}
+	for id, f := range fields { // inferFieldDefaults fills a defaulted field
+		if _, has := is.Fields[id]; f.Default && !has && strings.HasPrefix(id, "customfield_") {
+			is.Fields[id] = "default"
+		}
 	}
 	for id, v := range is.Fields {
 		f, ok := fields[id]

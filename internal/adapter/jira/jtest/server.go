@@ -115,6 +115,8 @@ type Server struct {
 	MoveRunning  int              // a bulk move task answers RUNNING this many times first
 	MoveFail     string           // a bulk move task fails with this message, moving nothing
 	MoveBodies   []string         // bodies of bulk move requests
+	MoveSkip     bool             // a bulk move task completes without moving anything
+	AfterMove    func()           // called (unlocked) after a bulk move request is handled
 
 	mu        sync.Mutex
 	projects  map[string]*Project // by key

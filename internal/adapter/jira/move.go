@@ -3,6 +3,7 @@ package jira
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,8 +12,7 @@ import (
 	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
-	"github.com/KrzysztofBogdan/gitfs/internal/changes"
-	"github.com/KrzysztofBogdan/gitfs/internal/envelope"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/atlassian"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
 
@@ -23,6 +23,7 @@ type movePlan struct {
 	from, to                         *projectMeta
 	typ                              *typeMeta
 	statusFrom, statusTo, statusName string // statusTo "": Jira infers
+	then                             string // the file's new status, reached by a transition after the move
 	notes, losses                    []string
 	adjusted                         *xmltree.Node // the local file as the target can hold it
 }
@@ -54,7 +55,11 @@ func (m *movePlan) detail() string {
 	if m.statusTo == "" {
 		status = m.to.Key + "'s default"
 	}
-	return fmt.Sprintf("move to %s as %s, status %s", m.to.Key, m.typ.Name, status)
+	d := fmt.Sprintf("move to %s as %s, status %s", m.to.Key, m.typ.Name, status)
+	if m.then != "" {
+		d += ", then transition to " + m.then
+	}
+	return d
 }
 
 func (m *movePlan) warning() string {
@@ -178,6 +183,9 @@ func (s *session) planMove(ctx context.Context, req adapter.ApplyRequest) (*move
 		m.noop = true
 		return m, nil
 	}
+	if child(local, "transitions") != nil {
+		return nil, errors.New("a <transitions> block cannot ride on a move: commit the move first, then the steps")
+	}
 	if cur.Fields.Issuetype.Subtask {
 		parent := ""
 		if cur.Fields.Parent != nil {
@@ -209,9 +217,6 @@ func (s *session) planMove(ctx context.Context, req adapter.ApplyRequest) (*move
 		return nil, err
 	}
 	putText(m.adjusted, "type", m.typ.Name)
-	if m.statusTo != "" {
-		putText(m.adjusted, "status", m.statusName)
-	}
 	return m, nil
 }
 
@@ -248,21 +253,34 @@ func (m *movePlan) chooseType(want, was string) error {
 	return nil
 }
 
-// chooseStatus maps to the file's status when the target workflow has it,
-// else (status not edited) lets Jira pick the default.
+// chooseStatus keeps the issue's status when the target workflow has it,
+// else lets Jira pick the default. A status the file changed is reached by
+// a transition after the move, so resolution and post-functions run.
 func (m *movePlan) chooseStatus(sts []apiStatus, want, was string) error {
-	var names []string
-	for _, st := range sts {
-		if strings.EqualFold(st.Name, want) {
-			m.statusTo, m.statusName = st.ID, st.Name
-			return nil
+	find := func(name string) *apiStatus {
+		for i := range sts {
+			if strings.EqualFold(sts[i].Name, name) {
+				return &sts[i]
+			}
 		}
-		names = append(names, st.Name)
+		return nil
 	}
 	if !strings.EqualFold(want, was) {
-		return fmt.Errorf("%s's %s workflow has no status %q (statuses: %s)", m.to.Key, m.typ.Name, want, strings.Join(names, ", "))
+		st := find(want)
+		if st == nil {
+			var names []string
+			for _, st := range sts {
+				names = append(names, st.Name)
+			}
+			return fmt.Errorf("%s's %s workflow has no status %q (statuses: %s)", m.to.Key, m.typ.Name, want, strings.Join(names, ", "))
+		}
+		m.then = st.Name
 	}
-	m.notes = append(m.notes, fmt.Sprintf("status %s -> %s's default", want, m.to.Key))
+	if st := find(was); st != nil {
+		m.statusTo, m.statusName = st.ID, st.Name
+		return nil
+	}
+	m.notes = append(m.notes, fmt.Sprintf("status %s -> %s's default", was, m.to.Key))
 	return nil
 }
 
@@ -409,7 +427,7 @@ func putText(root *xmltree.Node, name, text string) {
 // moveTimeout is how long gfs waits for Jira's move task.
 var moveTimeout = 2 * time.Minute
 
-// applyMove moves the issue, then applies the rest of the file against the
+// applyMove moves the issue, then applies the file's own changes to the
 // moved issue (jira move spec §5.4).
 func (s *session) applyMove(ctx context.Context, req adapter.ApplyRequest, mi int) []adapter.Result {
 	out := results(req.Actions)
@@ -423,49 +441,129 @@ func (s *session) applyMove(ctx context.Context, req adapter.ApplyRequest, mi in
 			return failAll(out, err)
 		}
 	}
+	out[mi].Refresh = refresh
 	is, err := s.getIssue(ctx, m.id)
-	if err != nil {
-		return failAll(out, err)
+	var post *adapter.Resource
+	if err == nil {
+		if key, _ := is.project(); !strings.EqualFold(key, m.to.Key) {
+			return failAll(out, fmt.Errorf("Jira finished the move task, but %s is still in %s", m.key, key))
+		}
+		post, err = s.resource(ctx, is, true)
 	}
-	post, err := s.resource(ctx, is, true)
-	if err != nil {
-		return failAll(out, err)
+	if err != nil { // moved in Jira: only the rest failed
+		err = fmt.Errorf("moved to %s, then: %w", m.to.Key, err)
+		for i := range out {
+			if i != mi {
+				out[i].Err, out[i].Code = err, atlassian.Code(err)
+			}
+		}
+		return out
 	}
-	adj := m.adjusted
-	adj.SetAttr("key", is.Key)
-	if !m.noop && m.statusTo == "" {
-		putText(adj, "status", textOf(child(post.Root, "status")))
-	}
-	acts := changes.ResolveActions(&Adapter{}, post.Root, &envelope.Doc{Content: adj}, post.Path, post.Path)
+	out[mi].Detail = is.Key
+	desired := afterMove(req.Base.Root, req.Local.Root, m.adjusted, post.Root, req.Actions)
+	var acts []adapter.Action
 	for _, a := range req.Actions {
-		if a.IsAttachment() {
+		switch {
+		case a.IsAttachment() || (a.Target != "" && a.Verb != "move"):
+			acts = append(acts, a)
+		case a.Verb == "update" && a.Target == "" && groupChanged(a.Group, post.Root, desired):
 			acts = append(acts, a)
 		}
 	}
 	inner := req
-	inner.Local = &adapter.Resource{ID: m.id, Path: post.Path, Root: adj}
+	inner.Local = &adapter.Resource{ID: m.id, Path: post.Path, Root: desired}
 	inner.Base, inner.Actions = post, acts
 	done := s.applyIssue(ctx, inner, results(acts))
-	out[mi].Detail, out[mi].Refresh = is.Key, refresh
-	matched := make([]bool, len(done))
 	for i, a := range req.Actions {
 		if i == mi {
 			continue
 		}
-		for j, d := range done {
-			if !matched[j] && sameAction(a, d.Action) {
-				matched[j] = true
+		for _, d := range done {
+			if sameAction(a, d.Action) {
 				out[i].Err, out[i].Code, out[i].ID, out[i].Version = d.Err, d.Code, d.ID, d.Version
 				break
 			}
 		}
 	}
-	for j, d := range done { // a value re-set by name after the move, not asked for by the file's own changes
-		if !matched[j] && d.Err != nil {
-			out = append(out, d)
+	return out
+}
+
+// afterMove is the file as it should be after the move: the moved issue
+// plus the file's own changes. A value the target dropped stays dropped,
+// and nothing the file left alone is sent again (jira move spec §5.4).
+func afterMove(base, local, adj, post *xmltree.Node, acts []adapter.Action) *xmltree.Node {
+	out := post.Clone()
+	for _, a := range acts {
+		if a.Verb != "update" || a.Target != "" || a.IsAttachment() {
+			continue
+		}
+		switch a.Group {
+		case "type", "transitions": // set by the move, or refused before it
+		case "status":
+			swapGroup(out, local, "status")
+		case "field":
+			for _, id := range changedFields(base, local) {
+				f, was := fieldsByID(adj)[id], fieldsByID(local)[id]
+				switch {
+				case f != nil:
+					swapField(out, id, f)
+				case was == nil: // the file removed it
+					swapField(out, id, nil)
+				}
+			}
+		default:
+			if child(adj, a.Group) != nil || child(local, a.Group) == nil {
+				swapGroup(out, adj, a.Group)
+			}
 		}
 	}
+	for _, name := range []string{"comment", "worklog", "link"} { // the move keeps them
+		swapGroup(out, local, name)
+	}
 	return out
+}
+
+// swapGroup replaces dst's elements named name with src's.
+func swapGroup(dst, src *xmltree.Node, name string) {
+	var kept []*xmltree.Node
+	for _, c := range dst.Children {
+		if !(c.Kind == xmltree.Element && c.Name == name) {
+			kept = append(kept, c)
+		}
+	}
+	for _, c := range src.ChildrenNamed(name) {
+		kept = append(kept, c.Clone())
+	}
+	dst.Children = kept
+}
+
+// swapField replaces dst's <field id> with f, or removes it when f is nil.
+func swapField(dst *xmltree.Node, id string, f *xmltree.Node) {
+	var kept []*xmltree.Node
+	for _, c := range dst.Children {
+		if v, _ := c.Attr("id"); !(c.Kind == xmltree.Element && c.Name == "field" && v == id) {
+			kept = append(kept, c)
+		}
+	}
+	if f != nil {
+		kept = append(kept, f.Clone())
+	}
+	dst.Children = kept
+}
+
+// groupChanged reports whether update group differs between post and desired.
+func groupChanged(group string, post, desired *xmltree.Node) bool {
+	if group == "field" {
+		return len(changedFields(post, desired)) > 0
+	}
+	print := func(root *xmltree.Node) string {
+		var b strings.Builder
+		for _, c := range root.ChildrenNamed(group) {
+			b.WriteString(xmltree.Print(c, 0))
+		}
+		return b.String()
+	}
+	return print(post) != print(desired)
 }
 
 func sameAction(a, b adapter.Action) bool {
@@ -495,7 +593,8 @@ func (s *session) bulkMove(ctx context.Context, m *movePlan) ([]string, error) {
 
 // waitMove polls the move task until it ends or moveTimeout passes.
 func (s *session) waitMove(ctx context.Context, m *movePlan, task string) ([]string, error) {
-	var waited time.Duration
+	var waited, next time.Duration
+	item := fmt.Sprintf("moving %s to %s", m.key, m.to.Key)
 	for {
 		var q struct {
 			Status    string                     `json:"status"`
@@ -532,9 +631,16 @@ func (s *session) waitMove(ctx context.Context, m *movePlan, task string) ([]str
 		if waited >= 5*time.Second {
 			d = time.Second
 		}
-		s.report(adapter.Progress{Phase: "wait", Item: fmt.Sprintf("moving %s to %s", m.key, m.to.Key)})
+		if waited >= next { // once, then every 5 s
+			msg := item
+			if waited > 0 {
+				msg = fmt.Sprintf("%s (%ds)", item, int(waited.Seconds()))
+			}
+			s.report(adapter.Progress{Phase: "wait", Item: msg})
+			next += 5 * time.Second
+		}
 		if err := s.c.Sleep(ctx, d); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("move %s to %s may still finish in Jira (task %s): %w", m.key, m.to.Key, task, err)
 		}
 		waited += d
 	}
