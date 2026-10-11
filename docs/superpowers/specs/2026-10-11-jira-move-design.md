@@ -153,8 +153,9 @@ After `finish` has written the file, the engine walks the `Refresh` ids of
 its successful results. For each id:
 
 - not in the index: skip;
-- part of this commit's change set (any status): skip; its own change
-  writes it back;
+- part of this commit's change set and not committed yet: skip; its own
+  change writes it back (a file committed earlier in the run is refreshed
+  like any other);
 - local file differs from its base (canonical content) or is missing:
   print `warning: <path>: changed on the remote by this commit; run gfs
   pull` and skip;
@@ -314,7 +315,8 @@ Engine (fake adapter):
   a Check error fails the file without asking; no Check without `Preview`;
 - dry run uses Check's class and prints its warning;
 - `Refresh`: unchanged file moved and base updated; locally changed file
-  warned and kept; file in the change set skipped.
+  warned and kept; a file edited in the same commit is committed, then
+  follows the move.
 
 Changes: a Jira-like `DirTree` adapter emits `move` for a folder change and
 the note for a same-folder rename (existing `IsMove` cases cover the rest).
