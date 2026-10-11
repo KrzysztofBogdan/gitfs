@@ -73,8 +73,9 @@ acme/
   `<parent file="Q4 platform epic.xml"/>`: commit creates it first, then the
   child, and writes the parent's key back.
 * A new file in a project folder creates an issue there. A folder that is not
-  a selected project is refused. Moving a file to another project folder does
-  nothing (`status` warns "rename ignored"): Jira's move needs a field mapping.
+  a selected project is refused. Moving a file to another project folder
+  moves the issue (see [Moving an issue](#moving-an-issue)); renaming it
+  inside its folder does nothing (`status` warns "rename ignored").
 * An issue moved to another project upstream moves to that folder on pull,
   with its new key.
 
@@ -254,6 +255,7 @@ When the workflow has no direct way to the status you want, list the steps:
 | file added in `<KEY> <summary>.files/` | upload attachment | `create` |
 | comment, worklog, link, attachment removed | delete it | `delete` (ask) |
 | file removed | delete the issue (refused while it has sub-tasks) | `delete` (ask) |
+| file moved to another project folder | move the issue (with its sub-tasks), then the file's other changes | `move`, or `delete` (ask) when something is lost |
 
 * In a service project every new comment needs `internal="true"` or
   `public="true"`; elsewhere neither is allowed. A new issue file with a
@@ -268,6 +270,31 @@ When the workflow has no direct way to the status you want, list the steps:
   delete it and add it again.
 * `gfs commit --dry-run` checks people, options, transitions, required fields,
   visibility and link types against Jira without changing anything.
+
+## Moving an issue
+
+Move the file to another project folder (`git mv`, a file manager) and
+commit. The project must be in the tree.
+
+* gfs keeps the file's `<type>` and `<status>` when the target has them;
+  otherwise it picks Task (or the target's first type) and lets Jira pick
+  the status. Edit them in the moved file to choose.
+* Values the target cannot hold are dropped: fields not on its screen,
+  components, versions and options it lacks. `gfs commit --dry-run` and the
+  ask list them: `⚠ type Story -> Task (SUP has no Story); drops component
+  billing, <field Story Points>`.
+* A move that loses nothing is class `move` (allowed by default); one that
+  loses something is class `delete` (asks). `move = ask` in `[policy]` asks
+  for every move.
+* A field the target requires with no default must be in the file.
+* Sub-tasks move with their parent; their files follow in the same commit
+  unless they have local changes (then the next pull moves them). A
+  sub-task file cannot be moved on its own.
+* Other changes to the file run after the move, against the new project.
+  If the move fails they are held back and the file keeps `<errors>`.
+* No bulk notification is sent; watchers get Jira's "issue moved" event.
+* An issue moved into a service project has no Request Type and does not
+  show in the customer portal.
 
 ## Pull
 

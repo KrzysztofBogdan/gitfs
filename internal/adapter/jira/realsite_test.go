@@ -6,6 +6,7 @@ package jira
 //	GFS_JIRA_SITE=jira://<site>/<PROJECT>   read: ADF round trip on up to 30 issues
 //	GFS_JIRA_SCRATCH=<KEY>                  write: a project where tests may create and delete issues
 //	GFS_JIRA_SCRATCH_JSM=<KEY>              write: a service project for the internal-comment check
+//	GFS_JIRA_SCRATCH_MOVE=<KEY>             write: a second software project the move check moves to
 //	GFS_JIRA_CUSTOMER=jira+customer://<site> customer: list and fetch
 //
 // plus GFS_JIRA_EMAIL and GFS_JIRA_TOKEN (or a stored token). Example:
@@ -17,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"reflect"
 	"sort"
 	"strings"
@@ -336,4 +338,59 @@ func TestRealCustomer(t *testing.T) {
 		break
 	}
 	t.Logf("%d requests", len(l.Resources)-1)
+}
+
+// TestRealMove moves a Task with a sub-task from GFS_JIRA_SCRATCH to
+// GFS_JIRA_SCRATCH_MOVE, then to GFS_JIRA_SCRATCH_JSM, where it is deleted
+// (jira move spec §7).
+func TestRealMove(t *testing.T) {
+	from, to, jsm := os.Getenv("GFS_JIRA_SCRATCH"), os.Getenv("GFS_JIRA_SCRATCH_MOVE"), os.Getenv("GFS_JIRA_SCRATCH_JSM")
+	site := os.Getenv("GFS_JIRA_SITE")
+	if site == "" || from == "" || to == "" || jsm == "" {
+		t.Skip("GFS_JIRA_SITE, GFS_JIRA_SCRATCH, GFS_JIRA_SCRATCH_MOVE and GFS_JIRA_SCRATCH_JSM not set")
+	}
+	u, _ := url.Parse(site)
+	s := realSession(t, "jira://"+u.Host+"?filter="+from+","+to+","+jsm)
+	var parent, sub struct{ ID, Key string }
+	if err := s.c.Do(bg, http.MethodPost, "/rest/api/3/issue", map[string]any{"fields": map[string]any{
+		"project": map[string]any{"key": from}, "issuetype": map[string]any{"name": "Task"}, "summary": "gfs move check"}}, &parent); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { // succeeds once the issue reached the service project
+		if err := s.c.Do(bg, http.MethodDelete, "/rest/api/3/issue/"+parent.ID+"?deleteSubtasks=true", nil, nil); err != nil {
+			t.Logf("cleanup %s: %v", parent.Key, err)
+		}
+	})
+	if err := s.c.Do(bg, http.MethodPost, "/rest/api/3/issue", map[string]any{"fields": map[string]any{
+		"project": map[string]any{"key": from}, "issuetype": map[string]any{"name": "Sub-task"},
+		"parent": map[string]any{"key": parent.Key}, "summary": "gfs move child"}}, &sub); err != nil {
+		t.Fatal(err)
+	}
+	moveTo := func(key string) adapter.Result {
+		t.Helper()
+		base, err := s.Fetch(bg, parent.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		local := *base
+		local.Root = base.Root.Clone()
+		local.Path = strings.ToLower(key) + "/" + path.Base(base.Path)
+		req := adapter.ApplyRequest{Local: &local, Base: base, Actions: []adapter.Action{{Verb: "move", From: base.Path, To: local.Path}}}
+		c := s.Check(bg, req)
+		if c[0].Err != nil {
+			t.Fatal(c[0].Err)
+		}
+		t.Logf("check: %s [%s] %s", c[0].Detail, c[0].Class, c[0].Warning)
+		got := s.Apply(bg, req)
+		if got[0].Err != nil {
+			t.Fatal(got[0].Err)
+		}
+		return got[0]
+	}
+	if r := moveTo(to); !strings.HasPrefix(r.Detail, to+"-") || len(r.Refresh) != 1 || r.Refresh[0] != sub.ID {
+		t.Fatalf("%+v", r)
+	}
+	if r := moveTo(jsm); !strings.HasPrefix(r.Detail, jsm+"-") {
+		t.Fatalf("%+v", r)
+	}
 }
