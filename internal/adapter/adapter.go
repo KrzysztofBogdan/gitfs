@@ -51,6 +51,9 @@ type Action struct {
 	From, To string // move
 	Params   map[string]string
 	File     string // attachment actions: sidecar path of the bytes; "" for resource actions
+	// Preview: commit runs Check before deciding this action and takes the
+	// class, detail and warning Check resolved (jira move spec §4.1).
+	Preview bool
 }
 
 // IsAttachment reports whether a acts on an attachment (attachments spec 4.4).
@@ -112,6 +115,8 @@ type Result struct {
 	// Partial: the action failed after changing the remote (a DNS type change
 	// whose delete ran and create failed); the engine re-reads the resource.
 	Partial bool
+	Class   string // Check: the policy class, when it differs from Describe's
+	Warning string // Check: printed before the ask and in a dry run
 }
 
 // AttachmentInfo describes downloaded attachment bytes.

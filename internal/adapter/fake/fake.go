@@ -62,6 +62,10 @@ type Remote struct {
 	CacheDir     string           // last UseCache argument
 	Advice       map[string]adapter.Advice
 	CheckDetail  map[string]string        // "verb group" -> Result.Detail from Check
+	CheckClass   map[string]string        // "verb group" -> Result.Class from Check
+	CheckWarn    map[string]string        // "verb group" -> Result.Warning from Check
+	Preview      map[string]bool          // verb -> Describe sets Action.Preview
+	Checks       int                      // Check calls
 	Warn         map[string]string        // Action.Detail -> Action.Warning set by Describe
 	NeedSecret   bool                     // Apply reads a secret for comment creates
 	Secrets      []string                 // secrets Apply read
@@ -244,6 +248,7 @@ func (*Adapter) Verbs() []adapter.Verb {
 func (ad *Adapter) Describe(a *adapter.Action, _ *adapter.Resource) {
 	defer func() { a.Warning = ad.Remote.Warn[a.Detail] }()
 	a.Class = a.Verb
+	a.Preview = ad.Remote.Preview[a.Verb]
 	switch {
 	case a.Target != "":
 		a.Detail = a.Verb + " " + a.Target
@@ -321,9 +326,11 @@ func (s session) Download(_ context.Context, resID, attID string, w io.Writer) (
 }
 
 func (s session) Check(_ context.Context, req adapter.ApplyRequest) []adapter.Result {
+	s.r.Checks++
 	var out []adapter.Result
 	for _, a := range req.Actions {
-		res := adapter.Result{Action: a, Err: s.fault(a), Detail: s.r.CheckDetail[a.Verb+" "+a.Group]}
+		k := a.Verb + " " + a.Group
+		res := adapter.Result{Action: a, Err: s.fault(a), Detail: s.r.CheckDetail[k], Class: s.r.CheckClass[k], Warning: s.r.CheckWarn[k]}
 		if a.Verb == "create" && a.Target == "" && res.Err == nil {
 			if pid, err := s.parentID(req); err != nil {
 				res.Err = err

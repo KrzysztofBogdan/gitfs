@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -212,12 +213,12 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 	ok := true
 	var checks []adapter.Result
 	if fc.Local != nil {
-		checks = e.Session.Check(ctx, adapter.ApplyRequest{
-			Local: &adapter.Resource{ID: fc.ID, Path: fc.Path, Root: fc.Local.Content},
-			Base:  baseResource(fc), Actions: fc.Actions, IDByPath: e.IDByPath, Open: e.open,
-		})
+		checks = e.Session.Check(ctx, e.checkRequest(fc))
 	}
 	for i, a := range fc.Actions {
+		if i < len(checks) {
+			resolved(&a, adapter.Result{Class: checks[i].Class, Warning: checks[i].Warning})
+		}
 		level := d.Policy.Level(a.Class)
 		mark := ""
 		switch {
@@ -254,6 +255,44 @@ func (e *Env) dryRunFile(ctx context.Context, fc changes.FileChange, d *policy.D
 	return ok
 }
 
+// checkRequest is what Check sees of fc.
+func (e *Env) checkRequest(fc changes.FileChange) adapter.ApplyRequest {
+	return adapter.ApplyRequest{
+		Local: &adapter.Resource{ID: fc.ID, Path: fc.Path, Root: fc.Local.Content},
+		Base:  baseResource(fc), Actions: fc.Actions, IDByPath: e.IDByPath, Open: e.open,
+	}
+}
+
+// preview resolves fc's Preview actions with Check before the policy decides
+// them (jira move spec §4.1). A Check error fails the file.
+func (e *Env) preview(ctx context.Context, fc changes.FileChange) ([]adapter.Action, error) {
+	checks := e.Session.Check(ctx, e.checkRequest(fc))
+	acts := slices.Clone(fc.Actions)
+	for i := range acts {
+		if !acts[i].Preview || i >= len(checks) {
+			continue
+		}
+		if checks[i].Err != nil {
+			return nil, checks[i].Err
+		}
+		resolved(&acts[i], checks[i])
+	}
+	return acts, nil
+}
+
+// resolved takes what Check said about a: class, detail and warning.
+func resolved(a *adapter.Action, c adapter.Result) {
+	if c.Class != "" {
+		a.Class = c.Class
+	}
+	if c.Detail != "" {
+		a.Detail = c.Detail
+	}
+	if c.Warning != "" {
+		a.Warning = c.Warning
+	}
+}
+
 func baseResource(fc changes.FileChange) *adapter.Resource {
 	if fc.Base == nil {
 		return nil
@@ -264,6 +303,13 @@ func baseResource(fc changes.FileChange) *adapter.Resource {
 func (e *Env) commitFile(ctx context.Context, fc changes.FileChange, d *policy.Decider, o CommitOpts, r *Report) error {
 	if !e.precheck(fc, r) {
 		return nil
+	}
+	if fc.Local != nil && slices.ContainsFunc(fc.Actions, func(a adapter.Action) bool { return a.Preview }) {
+		acts, err := e.preview(ctx, fc)
+		if err != nil {
+			return e.failAll(fc, fc.Actions, err, r)
+		}
+		fc.Actions = acts
 	}
 	for _, a := range fc.Actions {
 		p := actPath(fc, a)
