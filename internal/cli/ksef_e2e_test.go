@@ -32,8 +32,8 @@ func TestKSeFCloneStatusRestorePull(t *testing.T) {
 	srv.Add(kseftest.Invoice{Subject: "Subject2", Stored: time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)})
 	ksefClone(t, srv, "")
 	inv := srv.Invoices()
-	orig := filepath.Join("issued", "2026", "03", inv[0].KsefNumber+".xml")
-	meta := filepath.Join("_gfs", "issued", "2026", "03", inv[0].KsefNumber+".xml")
+	orig := filepath.Join("2026", "03", "issued", inv[0].KsefNumber+".xml")
+	meta := filepath.Join("_gfs", "2026", "03", "issued", inv[0].KsefNumber+".xml")
 	b, err := os.ReadFile(orig)
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestKSeFCloneStatusRestorePull(t *testing.T) {
 	}
 	m, _ := os.ReadFile(meta)
 	mustContain(t, string(m), `role="issued"`, `<file id="fa"`, "sha256=\""+inv[0].Hash)
-	if _, err := os.Stat(filepath.Join("received", "2026", "04", inv[1].KsefNumber+".xml")); err != nil {
+	if _, err := os.Stat(filepath.Join("2026", "04", "received", inv[1].KsefNumber+".xml")); err != nil {
 		t.Fatal("received invoice beside its metadata tree")
 	}
 	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
@@ -51,7 +51,7 @@ func TestKSeFCloneStatusRestorePull(t *testing.T) {
 	// read-only: an edited original, an edited metadata file, a stray
 	os.WriteFile(orig, append(b, ' '), 0o644)
 	replaceIn(t, meta, "<number>", "<number>X")
-	os.WriteFile(filepath.Join("received", "2026", "04", "scan.pdf"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join("2026", "04", "received", "scan.pdf"), []byte("x"), 0o644)
 	st := mustRun(t, 0, "status")
 	mustContain(t, st, "attachments of this resource are read-only", "KSeF invoices are read-only", "not part of the mirror")
 	before := len(srv.Requests())
@@ -62,7 +62,7 @@ func TestKSeFCloneStatusRestorePull(t *testing.T) {
 
 	// restore: metadata from the local copy, the original with gfs get
 	mustContain(t, mustRun(t, 0, "pull", "--force"), "restored")
-	os.Remove(filepath.Join("received", "2026", "04", "scan.pdf"))
+	os.Remove(filepath.Join("2026", "04", "received", "scan.pdf"))
 	os.Remove(orig)
 	mustRun(t, 0, "get", orig)
 	if b2, _ := os.ReadFile(orig); string(b2) != string(b) {
@@ -84,12 +84,12 @@ func TestKSeFCloneStatusRestorePull(t *testing.T) {
 	n := srv.Count("POST /invoices/exports")
 	srv.Add(kseftest.Invoice{Subject: "Subject2", Stored: time.Now()})
 	out := mustRun(t, 0, "pull")
-	mustContain(t, out, "+  _gfs/received/")
+	mustContain(t, out, "+  _gfs/"+time.Now().UTC().Format("2006/01")+"/received/")
 	if strings.Count(out, "+  ") != 1 || srv.Count("POST /invoices/exports")-n != 3 {
 		t.Fatalf("one new invoice, 3 exports:\n%s", out)
 	}
 	newest := srv.Invoices()[2]
-	if _, err := os.Stat(filepath.Join("received", newest.Stored.UTC().Format("2006/01"), newest.KsefNumber+".xml")); err != nil {
+	if _, err := os.Stat(filepath.Join(newest.Stored.UTC().Format("2006/01"), "received", newest.KsefNumber+".xml")); err != nil {
 		t.Fatal("the new original is written with its metadata")
 	}
 }
@@ -100,12 +100,44 @@ func TestKSeFRolesNarrowed(t *testing.T) {
 	srv.Add(kseftest.Invoice{Subject: "Subject1", Stored: time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC)})
 	srv.Add(kseftest.Invoice{Subject: "Subject2", Stored: time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)})
 	ksefClone(t, srv, "&roles=received")
-	if _, err := os.Stat("issued"); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join("2026", "03")); !os.IsNotExist(err) {
 		t.Fatal("issued invoices are outside the selection")
 	}
 	if ex := srv.Exports(); len(ex) == 0 || ex[0].Subject != "Subject2" {
 		t.Fatalf("%+v", ex)
 	}
+}
+
+// Narrowing roles on an existing tree removes the dropped role's files.
+func TestKSeFRoleDropped(t *testing.T) {
+	srv := kseftest.New()
+	t.Cleanup(srv.Close)
+	srv.Add(kseftest.Invoice{Subject: "Subject1", Stored: time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC)})
+	srv.Add(kseftest.Invoice{Subject: "Subject2", Stored: time.Date(2026, 3, 5, 10, 0, 0, 0, time.UTC)})
+	ksefClone(t, srv, "")
+	inv := srv.Invoices()
+	issued := filepath.Join("2026", "03", "issued", inv[0].KsefNumber+".xml")
+	if _, err := os.Stat(issued); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := os.ReadFile(filepath.Join(".gfs", "config"))
+	lines := strings.Split(string(cfg), "\n")
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "url = ") {
+			lines[i] = l + "&roles=received"
+		}
+	}
+	os.WriteFile(filepath.Join(".gfs", "config"), []byte(strings.Join(lines, "\n")), 0o644)
+	mustRun(t, 0, "pull")
+	for _, p := range []string{issued, filepath.Join("_gfs", issued)} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Fatalf("%s outlived its role", p)
+		}
+	}
+	if _, err := os.Stat(filepath.Join("2026", "03", "received", inv[1].KsefNumber+".xml")); err != nil {
+		t.Fatal("the kept role stays")
+	}
+	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
 }
 
 func ksefFA3(t *testing.T) []byte {
@@ -123,12 +155,12 @@ func TestKSeFPDF(t *testing.T) {
 	srv.Add(kseftest.Invoice{Subject: "Subject2", Stored: time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC), XML: ksefFA3(t)})
 	ksefClone(t, srv, "")
 	k := srv.Invoices()[0].KsefNumber
-	pdf := filepath.Join("received", "2026", "08", k+".pdf")
+	pdf := filepath.Join("2026", "08", "received", k+".pdf")
 	b, err := os.ReadFile(pdf)
 	if err != nil || !strings.HasPrefix(string(b), "%PDF-") {
 		t.Fatalf("the PDF beside the original: %v", err)
 	}
-	m, _ := os.ReadFile(filepath.Join("_gfs", "received", "2026", "08", k+".xml"))
+	m, _ := os.ReadFile(filepath.Join("_gfs", "2026", "08", "received", k+".xml"))
 	mustContain(t, string(m), `<file id="pdf" name="`+k+`.pdf"`, `generator="`)
 	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
 
@@ -149,7 +181,7 @@ func TestKSeFPullFullAddsPDFs(t *testing.T) {
 	srv.Add(kseftest.Invoice{Subject: "Subject2", Stored: time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC), XML: ksefFA3(t)})
 	ksefClone(t, srv, "&pdf=no")
 	k := srv.Invoices()[0].KsefNumber
-	pdf := filepath.Join("received", "2026", "08", k+".pdf")
+	pdf := filepath.Join("2026", "08", "received", k+".pdf")
 	if _, err := os.Stat(pdf); err == nil {
 		t.Fatal("pdf=no renders nothing")
 	}

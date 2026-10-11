@@ -28,7 +28,7 @@ func sampleMeta() apiInvoice {
 func TestResourceOf(t *testing.T) {
 	m := sampleMeta()
 	r := resourceOf("received", invoice{meta: m, xml: []byte("<x/>")}, nil)
-	if r.ID != "received/"+m.KsefNumber || r.Path != "_gfs/received/2026/10/"+m.KsefNumber+".xml" || r.Version != "qAdJ=" {
+	if r.ID != "received/"+m.KsefNumber || r.Path != "_gfs/2026/10/received/"+m.KsefNumber+".xml" || r.Version != "qAdJ=" {
 		t.Fatalf("%+v", r)
 	}
 	if string(r.Files["fa"]) != "<x/>" {
@@ -69,7 +69,7 @@ func TestResourceOfThirdParty(t *testing.T) {
 
 func TestPaths(t *testing.T) {
 	k := "6887603807-20261006-6CA868C00000-35"
-	if metaPath("issued", k) != "_gfs/issued/2026/10/"+k+".xml" || origPath("issued", k) != "issued/2026/10/"+k+".xml" {
+	if metaPath("issued", k) != "_gfs/2026/10/issued/"+k+".xml" || origPath("issued", k) != "2026/10/issued/"+k+".xml" {
 		t.Fatal(metaPath("issued", k), origPath("issued", k))
 	}
 }

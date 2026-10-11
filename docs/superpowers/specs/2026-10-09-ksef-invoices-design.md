@@ -28,8 +28,8 @@ the mirror only grows: a pull adds new invoices and never re-reads old ones.
   2026-02-01 (when KSeF became mandatory) or a chosen `since`.
 * The original invoice XML is byte-identical to KSeF's copy: its SHA-256
   equals KSeF's `invoiceHash`.
-* A month folder (`received/2026/10/`) holds only original invoices, so it
-  can be zipped and sent as it is.
+* A month folder (`2026/10/`) holds a folder per role with only original
+  invoices, so it can be zipped and sent as it is.
 * `gfs pull` adds new invoices with 3 export requests, within KSeF's
   production limits.
 * `gfs auth login ksef://…` guides the user to a KSeF token and stores it.
@@ -172,28 +172,30 @@ ksef://test.ksef.mf.gov.pl/<nip>          TEST
 
 ```text
 ksef-6887603807/
-├── issued/2026/10/6887603807-20261006-6CA868C00000-35.xml        original FA(3), exact bytes
-├── received/2026/10/5261040828-20261003-0A12BC340000-7F.xml
-├── third-party/2026/09/…
+├── 2026/09/third-party/…
+├── 2026/10/issued/6887603807-20261006-6CA868C00000-35.xml        original FA(3), exact bytes
+├── 2026/10/received/5261040828-20261003-0A12BC340000-7F.xml
 └── _gfs/
-    ├── issued/2026/10/6887603807-20261006-6CA868C00000-35.xml    metadata (§5)
-    └── received/2026/10/5261040828-20261003-0A12BC340000-7F.xml
+    ├── 2026/10/issued/6887603807-20261006-6CA868C00000-35.xml    metadata (§5)
+    └── 2026/10/received/5261040828-20261003-0A12BC340000-7F.xml
 ```
 
 * Roles are KSeF subject types: `issued` = `Subject1` (seller),
   `received` = `Subject2` (buyer), `third-party` = `Subject3`.
 * `<year>/<month>` is the date inside the KSeF number
   (`<nip>-<YYYYMMDD>-<technical>-<check>`), the day KSeF accepted the
-  invoice. It never changes, so files never move.
+  invoice. It never changes, so files never move. (Amended 2026-10-12: the
+  date comes before the role; the first layout was `<role>/<yyyy>/<mm>/`,
+  and `gfs pull --full` moves a tree mirrored under it.)
 * File name: `<ksef number>.xml` in both trees.
 * Resource id: `<role>/<ksef number>`. An invoice on which the company has
   two roles (a self-invoice, a third party that is also the buyer) is two
   resources, one per role folder.
 * Path model `Flat`: the path derives from the metadata; nothing moves.
 * `Placer` (§2.1): `ResourceDir()` is `_gfs`;
-  `AttachmentPath("_gfs/<r>/<y>/<m>/<k>.xml", "<k>.xml")` is
-  `<r>/<y>/<m>/<k>.xml`; `ResourceOf` is the inverse for paths of exactly
-  that shape under a role folder.
+  `AttachmentPath("_gfs/<y>/<m>/<r>/<k>.xml", "<k>.xml")` is
+  `<y>/<m>/<r>/<k>.xml`; `ResourceOf` is the inverse for paths of exactly
+  that shape with a role folder.
 
 ## 5. File format
 
@@ -299,9 +301,9 @@ old cursor; invoices from exports already finished are not written
 * A listed invoice whose id is already in the index is skipped: not
   rewritten, not compared, its bytes not written. Pull only adds.
 * `Listing.Full` is false and `Deleted` empty: KSeF never deletes
-  invoices. A role removed from `roles` is put in `FullDirs` (both its
-  `_gfs/<role>` and `<role>` folders) with no resources, and its files are
-  removed.
+  invoices. A role removed from `roles` is put in `FullIDPrefixes`
+  (`<role>/`) with no resources, and its files are removed: with the date
+  first, a role is no longer one folder.
 * `Fetch` returns `adapter.ErrNotFound`: listings always carry full
   content, so the engine never needs it.
 * An edited or deleted metadata file is restored from the engine's base

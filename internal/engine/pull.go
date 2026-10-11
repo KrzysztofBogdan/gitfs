@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -229,7 +230,7 @@ func Pull(ctx context.Context, e *Env, o PullOpts) (r PullReport, err error) {
 		gone[id] = true
 	}
 	for _, en := range e.Index.All() {
-		if !listed[en.ID] && (l.Full || underAny(en.Path, l.FullDirs)) {
+		if !listed[en.ID] && (l.Full || underAny(en.Path, l.FullDirs) || hasAnyPrefix(en.ID, l.FullIDPrefixes)) {
 			gone[en.ID] = true
 		}
 	}
@@ -468,6 +469,10 @@ func (e *Env) pullAttachments(ctx context.Context, o PullOpts, say func(string, 
 }
 
 // underAny reports whether p lies inside one of the top-level folders dirs.
+func hasAnyPrefix(id string, prefixes []string) bool {
+	return slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(id, p) })
+}
+
 func underAny(p string, dirs []string) bool {
 	for _, d := range dirs {
 		if strings.HasPrefix(p, d+"/") {

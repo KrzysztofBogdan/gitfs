@@ -29,28 +29,30 @@ ksef://test.ksef.mf.gov.pl/<nip>        TEST
 | `pdf` | a PDF beside each original: `yes` or `no` | `yes` |
 
 `since` applies to a clone and `gfs pull --full`; a pull continues where the
-last one stopped. Removing a role from `roles` removes its folders.
+last one stopped. Removing a role from `roles` removes its files.
 
 ## Layout
 
 ```text
 ksef-6887603807/
-├── issued/2026/10/6887603807-20261006-6CA868C00000-35.xml       original FA(3)
-├── issued/2026/10/6887603807-20261006-6CA868C00000-35.pdf       its PDF
-├── received/2026/10/5261040828-20261003-0A12BC340000-7F.xml
-├── received/2026/10/5261040828-20261003-0A12BC340000-7F.pdf
-├── third-party/2026/09/…
+├── 2026/09/third-party/…
+├── 2026/10/issued/6887603807-20261006-6CA868C00000-35.xml       original FA(3)
+├── 2026/10/issued/6887603807-20261006-6CA868C00000-35.pdf       its PDF
+├── 2026/10/received/5261040828-20261003-0A12BC340000-7F.xml
+├── 2026/10/received/5261040828-20261003-0A12BC340000-7F.pdf
 └── _gfs/
-    ├── issued/2026/10/6887603807-20261006-6CA868C00000-35.xml   metadata
-    └── received/2026/10/5261040828-20261003-0A12BC340000-7F.xml
+    ├── 2026/10/issued/6887603807-20261006-6CA868C00000-35.xml   metadata
+    └── 2026/10/received/5261040828-20261003-0A12BC340000-7F.xml
 ```
 
-* A month folder (`received/2026/10/`) holds only original invoices and
-  their PDFs: zip it and send it to your accountant as it is. Each original
+* A month folder (`2026/10/`) holds one folder per role, and those hold
+  only original invoices and their PDFs: zip it and send it to your accountant as it is. Each original
   is byte-identical to KSeF's copy; its SHA-256 is the `sha256` in its
   metadata file.
 * The month is the day KSeF accepted the invoice, taken from the KSeF
   number (`<nip>-<YYYYMMDD>-…`), so files never move.
+* A tree mirrored before this layout (`<role>/<yyyy>/<mm>/`) moves to it
+  with `gfs pull --full`.
 * An invoice on which your company has two roles is in both folders.
 * Any other file you put in these folders is reported by `gfs status` as
   not part of the mirror.

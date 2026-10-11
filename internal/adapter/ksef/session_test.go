@@ -59,8 +59,8 @@ func TestListRolesNarrowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(l.FullDirs, " ") != "_gfs/issued issued _gfs/third-party third-party" {
-		t.Fatalf("roles outside the selection are full (and empty): %v", l.FullDirs)
+	if strings.Join(l.FullIDPrefixes, " ") != "issued/ third-party/" || len(l.FullDirs) != 0 {
+		t.Fatalf("roles outside the selection are full (and empty): %v %v", l.FullIDPrefixes, l.FullDirs)
 	}
 	if ex := srv.Exports(); len(ex) != 1 || ex[0].Subject != "Subject2" || ex[0].From != day {
 		t.Fatalf("only the selected role, from its cursor: %+v", ex)
@@ -114,14 +114,14 @@ func TestPlacer(t *testing.T) {
 	if r, ok := a.ResourceOf(origPath("issued", k)); !ok || r != metaPath("issued", k) {
 		t.Fatal(r)
 	}
-	pdf := "issued/2026/10/" + k + ".pdf"
+	pdf := "2026/10/issued/" + k + ".pdf"
 	if a.AttachmentPath(metaPath("issued", k), k+".pdf") != pdf {
 		t.Fatal(a.AttachmentPath(metaPath("issued", k), k+".pdf"))
 	}
 	if r, ok := a.ResourceOf(pdf); !ok || r != metaPath("issued", k) {
 		t.Fatalf("a PDF belongs to its invoice: %q", r)
 	}
-	for _, p := range []string{"issued/2026/10/scan.txt", "_gfs/issued/2026/10/" + k + ".xml", "other/2026/10/" + k + ".xml", k + ".xml"} {
+	for _, p := range []string{"2026/10/issued/scan.txt", "_gfs/2026/10/issued/" + k + ".xml", "2026/10/other/" + k + ".xml", "issued/2026/10/" + k + ".xml", "2026/1/issued/" + k + ".xml", k + ".xml"} {
 		if _, ok := a.ResourceOf(p); ok {
 			t.Error(p)
 		}

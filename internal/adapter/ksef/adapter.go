@@ -63,7 +63,7 @@ func (*Adapter) AttachmentPath(resPath, name string) string {
 	return path.Dir(strings.TrimPrefix(resPath, roleRoot+"/")) + "/" + name
 }
 
-var placedRe = regexp.MustCompile(`^(issued|received|third-party)/[0-9]{4}/[0-9]{2}/[^/]+\.(xml|pdf)$`)
+var placedRe = regexp.MustCompile(`^[0-9]{4}/[0-9]{2}/(issued|received|third-party)/[^/]+\.(xml|pdf)$`)
 
 // ResourceOf maps an original or its PDF to the metadata file beside which
 // it is placed (ksef pdf spec §5.3).

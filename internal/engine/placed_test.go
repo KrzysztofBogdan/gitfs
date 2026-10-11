@@ -160,3 +160,17 @@ func TestPullErrorKeepsTracking(t *testing.T) {
 		t.Fatal("tracking lines written before the error are saved")
 	}
 }
+
+// A layout change moves a resource on the remote: its placed files follow it.
+func TestPlacedMovedOnRemoteTakesFiles(t *testing.T) {
+	env, ad, out := placed(t)
+	fetchAll(t, env, out)
+	ad.Remote.Move("1", "_m/b/one.xml")
+	pull(t, env, PullOpts{})
+	if read(t, env, "b/one.x.png") != "abc" || env.Tree.Exists("a/one.x.png") {
+		t.Fatalf("the placed file must move with its resource\n%s", out)
+	}
+	if cs := status(t, env); len(cs) != 0 {
+		t.Fatalf("%+v\n%s", cs, out)
+	}
+}

@@ -17,7 +17,7 @@ it in goja, a JavaScript interpreter written in Go: no Node.js at run time.
 
 ### Goals
 
-* Every invoice gfs adds gets `<role>/<yyyy>/<mm>/<ksef>.pdf` beside its
+* Every invoice gfs adds gets `<yyyy>/<mm>/<role>/<ksef>.pdf` beside its
   original, with the same layout and bytes the web app produces when its
   clock reads the chosen render time (§4.3).
 * The same original always renders to the same bytes, on any machine, in
@@ -208,9 +208,9 @@ interrupts a running render.
 ### 5.1 Layout and metadata
 
 ```text
-received/2026/10/5261040828-20261003-0A12BC340000-7F.xml   original
-received/2026/10/5261040828-20261003-0A12BC340000-7F.pdf   PDF
-_gfs/received/2026/10/5261040828-20261003-0A12BC340000-7F.xml
+2026/10/received/5261040828-20261003-0A12BC340000-7F.xml   original
+2026/10/received/5261040828-20261003-0A12BC340000-7F.pdf   PDF
+_gfs/2026/10/received/5261040828-20261003-0A12BC340000-7F.xml
 ```
 
 The attachment element of the metadata file is renamed from `original` to
@@ -245,8 +245,8 @@ when `pdf` is not nil.
 * `Download(id, "pdf")` reads the original from KSeF as `Download(id,
   "fa")` does (one of the 64 single-invoice downloads an hour), checks
   its hash, renders it with a renderer of its own and writes the PDF.
-* `ResourceOf` accepts `<role>/<yyyy>/<mm>/<name>.pdf` as well as `.xml`,
-  both owned by `_gfs/<role>/<yyyy>/<mm>/<name>.xml`.
+* `ResourceOf` accepts `<yyyy>/<mm>/<role>/<name>.pdf` as well as `.xml`,
+  both owned by `_gfs/<yyyy>/<mm>/<role>/<name>.xml`.
 * Read-only rules apply to PDFs as to originals: an edited PDF is refused
   by `gfs commit`; a removed one is, like a removed original, merely not
   downloaded; `gfs get <pdf>` restores either.

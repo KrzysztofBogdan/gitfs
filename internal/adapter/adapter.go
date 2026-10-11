@@ -89,7 +89,10 @@ type Listing struct {
 	// Full is false: an indexed resource under one of them that the listing
 	// omits was deleted on the remote.
 	FullDirs []string
-	Cursor   string
+	// FullIDPrefixes do the same by id: an indexed resource whose id starts
+	// with one and that the listing omits was deleted on the remote.
+	FullIDPrefixes []string
+	Cursor         string
 }
 
 type ApplyRequest struct {

@@ -176,6 +176,26 @@ func TestPullFullDirs(t *testing.T) {
 	}
 }
 
+// A partial listing that covers ids starting with "2" completely deletes
+// those it omits and leaves other ids alone.
+func TestPullFullIDPrefixes(t *testing.T) {
+	env, ad, out := cloned(t)
+	ad.Remote.Partial = true
+	ad.Remote.FullIDPrefixes = []string{"2"}
+	ad.Remote.Delete("1")
+	ad.Remote.Delete("2")
+	r := pull(t, env, PullOpts{})
+	if r.Deleted != 1 {
+		t.Fatalf("deleted %d, want 1\n%s", r.Deleted, out)
+	}
+	if _, ok := env.Index.ByID("2"); ok {
+		t.Fatal("2 still indexed")
+	}
+	if _, ok := env.Index.ByID("1"); !ok {
+		t.Fatal("1 is outside the prefixes and must stay")
+	}
+}
+
 func TestCloneGivesCacheDir(t *testing.T) {
 	env, ad, _ := cloned(t)
 	if want := filepath.Join(env.Tree.Root, ".gfs", "cache"); ad.Remote.CacheDir != want {

@@ -11,7 +11,8 @@ import (
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
 
-// roleRoot holds the metadata files; originals live beside it (ksef spec §4).
+// roleRoot holds the metadata files; originals live beside it at the same
+// <yyyy>/<mm>/<role>/ path (ksef spec §4).
 const roleRoot = "_gfs"
 
 // ksefMonth is <yyyy>/<mm> from the date inside a KSeF number
@@ -24,7 +25,7 @@ func ksefMonth(k string) string {
 	return parts[1][:4] + "/" + parts[1][4:6]
 }
 
-func origPath(role, k string) string { return role + "/" + ksefMonth(k) + "/" + k + ".xml" }
+func origPath(role, k string) string { return ksefMonth(k) + "/" + role + "/" + k + ".xml" }
 func metaPath(role, k string) string { return roleRoot + "/" + origPath(role, k) }
 
 func el(name string, attrs ...string) *xmltree.Node {

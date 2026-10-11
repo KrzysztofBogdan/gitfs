@@ -48,7 +48,7 @@ func (s *session) Close() error                         { return nil }
 
 // List exports every selected role from its cursor, or from since for a role
 // the cursor lacks (ksef spec §6). Roles outside the selection are listed as
-// full and empty, so their files are removed. A failed role fails the listing.
+// full and empty by id, so their files are removed. A failed role fails the listing.
 func (s *session) List(ctx context.Context, cur string) (adapter.Listing, error) {
 	defer s.report(adapter.Progress{Phase: "done"})
 	from := map[string]string{}
@@ -89,7 +89,7 @@ func (s *session) List(ctx context.Context, cur string) (adapter.Listing, error)
 	}
 	for _, role := range roles {
 		if !slices.Contains(s.t.roles, role) {
-			l.FullDirs = append(l.FullDirs, roleRoot+"/"+role, role)
+			l.FullIDPrefixes = append(l.FullIDPrefixes, role+"/")
 		}
 	}
 	b, _ := json.Marshal(next)

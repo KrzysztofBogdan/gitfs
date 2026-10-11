@@ -51,38 +51,39 @@ type record struct {
 }
 
 type Remote struct {
-	FailVerb     map[string]error // keyed by verb, or verb+" "+target; "download" fails Download, "list" List
-	LockFailures int              // Apply returns ErrLock this many times
-	Calls        []string         // "verb path" per executed action ("verb file" for attachments)
-	Published    []string         // "path channel"
-	Downloads    int              // successful Download calls
-	Cursors      []string         // cursor passed to each List call
-	Partial      bool             // List returns Full: false
-	FullDirs     []string         // returned as Listing.FullDirs
-	WithFiles    bool             // listed resources carry their attachment bytes (Resource.Files)
-	CacheDir     string           // last UseCache argument
-	Advice       map[string]adapter.Advice
-	CheckDetail  map[string]string        // "verb group" -> Result.Detail from Check
-	CheckClass   map[string]string        // "verb group" -> Result.Class from Check
-	CheckWarn    map[string]string        // "verb group" -> Result.Warning from Check
-	Preview      map[string]bool          // verb -> Describe sets Action.Preview
-	Checks       int                      // Check calls
-	Refresh      map[string][]string      // verb -> Result.Refresh of a successful action
-	Moves        map[string]string        // record id -> path it moves to when Apply reports it in Refresh
-	Warn         map[string]string        // Action.Detail -> Action.Warning set by Describe
-	NeedSecret   bool                     // Apply reads a secret for comment creates
-	Secrets      []string                 // secrets Apply read
-	VanishOnFail bool                     // a failed sub update also removes that sub (a delete whose create failed)
-	Stubs        bool                     // List returns stubs (no Root); the engine fetches them
-	Missing      map[string]bool          // listed, but Fetch reports not found (deleted after listing)
-	FetchLimit   int                      // Fetch fails after this many calls (0: never)
-	Parent       func(path string) string // create: the working path whose id becomes the new record's parent ("" none)
-	Parents      map[string]string        // record id -> parent id, set on create
-	CreatePath   map[string]string        // create: working path -> remote path (a title-derived rename)
-	FailCreate   map[string]error         // create of this working path fails
-	fetches      int
-	recs         map[string]*record
-	seq          int
+	FailVerb       map[string]error // keyed by verb, or verb+" "+target; "download" fails Download, "list" List
+	LockFailures   int              // Apply returns ErrLock this many times
+	Calls          []string         // "verb path" per executed action ("verb file" for attachments)
+	Published      []string         // "path channel"
+	Downloads      int              // successful Download calls
+	Cursors        []string         // cursor passed to each List call
+	Partial        bool             // List returns Full: false
+	FullDirs       []string         // returned as Listing.FullDirs
+	FullIDPrefixes []string         // returned as Listing.FullIDPrefixes
+	WithFiles      bool             // listed resources carry their attachment bytes (Resource.Files)
+	CacheDir       string           // last UseCache argument
+	Advice         map[string]adapter.Advice
+	CheckDetail    map[string]string        // "verb group" -> Result.Detail from Check
+	CheckClass     map[string]string        // "verb group" -> Result.Class from Check
+	CheckWarn      map[string]string        // "verb group" -> Result.Warning from Check
+	Preview        map[string]bool          // verb -> Describe sets Action.Preview
+	Checks         int                      // Check calls
+	Refresh        map[string][]string      // verb -> Result.Refresh of a successful action
+	Moves          map[string]string        // record id -> path it moves to when Apply reports it in Refresh
+	Warn           map[string]string        // Action.Detail -> Action.Warning set by Describe
+	NeedSecret     bool                     // Apply reads a secret for comment creates
+	Secrets        []string                 // secrets Apply read
+	VanishOnFail   bool                     // a failed sub update also removes that sub (a delete whose create failed)
+	Stubs          bool                     // List returns stubs (no Root); the engine fetches them
+	Missing        map[string]bool          // listed, but Fetch reports not found (deleted after listing)
+	FetchLimit     int                      // Fetch fails after this many calls (0: never)
+	Parent         func(path string) string // create: the working path whose id becomes the new record's parent ("" none)
+	Parents        map[string]string        // record id -> parent id, set on create
+	CreatePath     map[string]string        // create: working path -> remote path (a title-derived rename)
+	FailCreate     map[string]error         // create of this working path fails
+	fetches        int
+	recs           map[string]*record
+	seq            int
 }
 
 // next returns a fresh id, skipping ids already taken by Put.
@@ -291,7 +292,7 @@ func (s session) List(_ context.Context, cursor string) (adapter.Listing, error)
 	if err := s.r.FailVerb["list"]; err != nil {
 		return adapter.Listing{}, err
 	}
-	l := adapter.Listing{Full: !s.r.Partial, FullDirs: s.r.FullDirs, Cursor: "c1"}
+	l := adapter.Listing{Full: !s.r.Partial, FullDirs: s.r.FullDirs, FullIDPrefixes: s.r.FullIDPrefixes, Cursor: "c1"}
 	for _, id := range slices.Sorted(maps.Keys(s.r.recs)) { // a fixed order: tests rely on it
 		res := *s.r.resource(id, s.r.recs[id])
 		if s.r.Stubs {
