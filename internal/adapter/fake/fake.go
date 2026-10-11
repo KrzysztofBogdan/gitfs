@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"path"
 	"regexp"
@@ -291,8 +292,8 @@ func (s session) List(_ context.Context, cursor string) (adapter.Listing, error)
 		return adapter.Listing{}, err
 	}
 	l := adapter.Listing{Full: !s.r.Partial, FullDirs: s.r.FullDirs, Cursor: "c1"}
-	for id, rec := range s.r.recs {
-		res := *s.r.resource(id, rec)
+	for _, id := range slices.Sorted(maps.Keys(s.r.recs)) { // a fixed order: tests rely on it
+		res := *s.r.resource(id, s.r.recs[id])
 		if s.r.Stubs {
 			res.Root = nil
 		}

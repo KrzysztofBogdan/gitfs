@@ -7,7 +7,8 @@ import (
 )
 
 func TestTailNeedsATailer(t *testing.T) {
-	fk.Remote.Put("tail1", "t/run.xml", `<note><title>Run</title></note>`) // the shared fake: other tests delete a/one.xml
+	freshFake(t)
+	fk.Remote.Put("tail1", "t/run.xml", `<note><title>Run</title></note>`)
 	dir := t.TempDir()
 	t.Chdir(dir)
 	if out, code := gfs(t, "clone", "fake://x", "wt"); code != 0 {

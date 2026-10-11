@@ -9,6 +9,7 @@ import (
 )
 
 func TestActionsForPaths(t *testing.T) {
+	freshFake(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
 	mustRun(t, 0, "clone", "fake://x", "wt")

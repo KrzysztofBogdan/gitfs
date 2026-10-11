@@ -8,6 +8,7 @@ import (
 )
 
 func TestCLIAttachments(t *testing.T) {
+	freshFake(t)
 	fk.Remote.Put("7", "att/n.xml", `<note><title>N</title></note>`)
 	fk.Remote.PutAttachment("7", "70", "x.png", []byte("abc"))
 	dir := t.TempDir()

@@ -13,8 +13,13 @@ import (
 
 var fk = fake.New()
 
-func init() {
-	adapter.Register(fk) // test-only registration
+func init() { adapter.Register(fk) } // test-only registration
+
+// freshFake gives fake://x a new remote holding only a/one.xml, so a test
+// does not see what an earlier one committed (or deleted) there.
+func freshFake(t *testing.T) {
+	t.Helper()
+	fk.Remote = fake.New().Remote
 	fk.Remote.Put("1", "a/one.xml", `<note><title>One</title></note>`)
 }
 
@@ -33,6 +38,7 @@ func gfs(t *testing.T, args ...string) (string, int) {
 }
 
 func TestCLIFlow(t *testing.T) {
+	freshFake(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
 	if out, code := gfs(t, "clone", "fake://x", "wt"); code != 0 {
@@ -89,7 +95,7 @@ func TestOutsideTree(t *testing.T) {
 }
 
 func TestCommitForce(t *testing.T) {
-	fk.Remote.Put("1", "a/one.xml", `<note><title>One</title></note>`) // TestCLIFlow deletes it
+	freshFake(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
 	if out, code := gfs(t, "clone", "fake://x", "wt"); code != 0 {
