@@ -63,11 +63,13 @@ func (*Adapter) AttachmentPath(resPath, name string) string {
 	return path.Dir(strings.TrimPrefix(resPath, roleRoot+"/")) + "/" + name
 }
 
-var origRe = regexp.MustCompile(`^(issued|received|third-party)/[0-9]{4}/[0-9]{2}/[^/]+\.xml$`)
+var placedRe = regexp.MustCompile(`^(issued|received|third-party)/[0-9]{4}/[0-9]{2}/[^/]+\.(xml|pdf)$`)
 
+// ResourceOf maps an original or its PDF to the metadata file beside which
+// it is placed (ksef pdf spec §5.3).
 func (*Adapter) ResourceOf(p string) (string, bool) {
-	if !origRe.MatchString(p) {
+	if !placedRe.MatchString(p) {
 		return "", false
 	}
-	return roleRoot + "/" + p, true
+	return roleRoot + "/" + strings.TrimSuffix(p, path.Ext(p)) + ".xml", true
 }

@@ -21,12 +21,19 @@ var apiBase = map[string]string{
 	"test.ksef.mf.gov.pl": "https://api-test.ksef.mf.gov.pl/v2",
 }
 
+// qrBase is where KOD I links point for each host (ksef pdf spec §4.4).
+var qrBase = map[string]string{
+	"ksef.mf.gov.pl":      "https://qr.ksef.mf.gov.pl",
+	"demo.ksef.mf.gov.pl": "https://qr-demo.ksef.mf.gov.pl",
+	"test.ksef.mf.gov.pl": "https://qr-test.ksef.mf.gov.pl",
+}
+
 // roles in folder order; subjectOf names KSeF's subject type of each.
 var roles = []string{"issued", "received", "third-party"}
 
 var subjectOf = map[string]string{"issued": "Subject1", "received": "Subject2", "third-party": "Subject3"}
 
-const forms = "want ksef://ksef.mf.gov.pl/<nip>[?since=<date>&roles=issued,received,third-party] (demo.ksef.mf.gov.pl, test.ksef.mf.gov.pl for DEMO and TEST)"
+const forms = "want ksef://ksef.mf.gov.pl/<nip>[?since=<date>&roles=issued,received,third-party&pdf=no] (demo.ksef.mf.gov.pl, test.ksef.mf.gov.pl for DEMO and TEST)"
 
 var (
 	nipRe   = regexp.MustCompile(`^[0-9]{10}$`)
@@ -101,8 +108,8 @@ func normalize(u *url.URL) (*url.URL, error) {
 	}
 	q := u.Query()
 	for k := range q {
-		if k != "since" && k != "roles" && k != "base" {
-			return nil, fmt.Errorf("unknown parameter %q (want since, roles)", k)
+		if k != "since" && k != "roles" && k != "pdf" && k != "base" {
+			return nil, fmt.Errorf("unknown parameter %q (want since, roles, pdf)", k)
 		}
 	}
 	var parts []string
@@ -118,6 +125,13 @@ func normalize(u *url.URL) (*url.URL, error) {
 	}
 	if len(rs) < len(roles) {
 		parts = append(parts, "roles="+strings.Join(rs, ","))
+	}
+	switch p := q.Get("pdf"); p {
+	case "", "yes":
+	case "no":
+		parts = append(parts, "pdf=no")
+	default:
+		return nil, fmt.Errorf("pdf=%s: want yes or no", p)
 	}
 	if b := q.Get("base"); b != "" {
 		parts = append(parts, "base="+url.QueryEscape(b))
@@ -152,6 +166,7 @@ type target struct {
 	token           string
 	since           string // as written; "" is the default
 	roles           []string
+	pdf             bool // render PDFs (ksef pdf spec §5.5)
 }
 
 // String hides the token: a target may end up in %v output.
@@ -167,7 +182,7 @@ func parseTarget(u *url.URL, getenv func(string) string, store EntryStore) (targ
 		return target{}, err
 	}
 	q := n.Query()
-	t := target{host: n.Host, nip: strings.Trim(n.Path, "/"), base: apiBase[n.Host], since: q.Get("since")}
+	t := target{host: n.Host, nip: strings.Trim(n.Path, "/"), base: apiBase[n.Host], since: q.Get("since"), pdf: q.Get("pdf") != "no"}
 	if b := q.Get("base"); b != "" {
 		t.base = b
 	}

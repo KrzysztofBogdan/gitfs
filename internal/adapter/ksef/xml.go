@@ -7,6 +7,7 @@ import (
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/dnsx"
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/ksef/ksefpdf"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
 
@@ -56,8 +57,9 @@ func stamp(s string) string {
 func money(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 
 // resourceOf is the metadata file of one invoice in one role, with its
-// original's bytes as attachment fa (ksef spec §5).
-func resourceOf(role string, inv invoice) adapter.Resource {
+// original's bytes as file fa and, when rendered, its PDF as file pdf (ksef
+// spec §5, ksef pdf spec §5.1).
+func resourceOf(role string, inv invoice, pdf []byte) adapter.Resource {
 	m := inv.meta
 	id := role + "/" + m.KsefNumber
 	root := el("invoice", "id", id, "ksef", m.KsefNumber, "role", role, "version", m.InvoiceHash)
@@ -90,7 +92,11 @@ func resourceOf(role string, inv invoice) adapter.Resource {
 	if m.HashOfCorrectedInvoice != "" {
 		add(el("corrects", "hash", m.HashOfCorrectedInvoice))
 	}
-	add(el("original", "id", "fa", "name", m.KsefNumber+".xml", "size", strconv.Itoa(len(inv.xml)), "sha256", m.InvoiceHash))
-	return adapter.Resource{ID: id, Version: m.InvoiceHash, Path: metaPath(role, m.KsefNumber), Root: root,
-		Files: map[string][]byte{"fa": inv.xml}}
+	add(el("file", "id", "fa", "name", m.KsefNumber+".xml", "size", strconv.Itoa(len(inv.xml)), "sha256", m.InvoiceHash))
+	files := map[string][]byte{"fa": inv.xml}
+	if pdf != nil {
+		add(el("file", "id", "pdf", "name", m.KsefNumber+".pdf", "size", strconv.Itoa(len(pdf)), "sha256", b64sha(pdf), "generator", ksefpdf.Release()))
+		files["pdf"] = pdf
+	}
+	return adapter.Resource{ID: id, Version: m.InvoiceHash, Path: metaPath(role, m.KsefNumber), Root: root, Files: files}
 }

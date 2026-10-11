@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KrzysztofBogdan/gitfs/internal/adapter/ksef/ksefpdf"
 	"github.com/KrzysztofBogdan/gitfs/internal/canon"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
@@ -26,7 +27,7 @@ func sampleMeta() apiInvoice {
 
 func TestResourceOf(t *testing.T) {
 	m := sampleMeta()
-	r := resourceOf("received", invoice{meta: m, xml: []byte("<x/>")})
+	r := resourceOf("received", invoice{meta: m, xml: []byte("<x/>")}, nil)
 	if r.ID != "received/"+m.KsefNumber || r.Path != "_gfs/received/2026/10/"+m.KsefNumber+".xml" || r.Version != "qAdJ=" {
 		t.Fatalf("%+v", r)
 	}
@@ -41,7 +42,7 @@ func TestResourceOf(t *testing.T) {
 		`<invoicing>2026-10-03T08:12:30.5Z</invoicing>`, `<acquired>2026-10-03T08:12:30.6Z</acquired>`, `<stored>2026-10-03T08:12:31Z</stored>`,
 		`<mode>online</mode>`, `<seller nip="5261040828">ORLEN S.A.</seller>`, `<buyer type="nip" id="6887603807">Acme sp. z o.o.</buyer>`,
 		`<amounts currency="PLN" net="43.60" vat="10.03" gross="53.63"/>`, `<corrects hash="abc="/>`,
-		`<original id="fa" name="5261040828-20261003-0A12BC340000-7F.xml" size="4" sha256="qAdJ="/>`,
+		`<file id="fa" name="5261040828-20261003-0A12BC340000-7F.xml" size="4" sha256="qAdJ="/>`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s in\n%s", want, got)
@@ -59,7 +60,7 @@ func TestResourceOfThirdParty(t *testing.T) {
 		Name       string `json:"name"`
 		Role       int    `json:"role"`
 	}{party{"Nip", "1111111111"}, "Factor\x01 S.A.", 4})
-	r := resourceOf("third-party", invoice{meta: m, xml: []byte("<x/>")})
+	r := resourceOf("third-party", invoice{meta: m, xml: []byte("<x/>")}, nil)
 	got := xmltree.Print(r.Root, 0)
 	if !strings.Contains(got, `<third-party type="nip" id="1111111111" role="4">Factor� S.A.</third-party>`) {
 		t.Fatalf("characters XML cannot hold are replaced:\n%s", got)
@@ -75,7 +76,7 @@ func TestPaths(t *testing.T) {
 
 func TestRelaxNG(t *testing.T) {
 	g := RelaxNG()
-	if !strings.Contains(g, `<element name="original">`) || !strings.Contains(g, `<element name="invoice">`) {
+	if !strings.Contains(g, `<element name="file">`) || !strings.Contains(g, `<element name="invoice">`) {
 		t.Fatal(g)
 	}
 	if _, err := exec.LookPath("xmllint"); err != nil {
@@ -89,11 +90,25 @@ func TestRelaxNG(t *testing.T) {
 		}
 		return p
 	}
-	r := resourceOf("received", invoice{meta: sampleMeta(), xml: []byte("<x/>")})
+	r := resourceOf("received", invoice{meta: sampleMeta(), xml: []byte("<x/>")}, nil)
 	canon.Normalize(r.Root, invoiceSchema)
 	doc := write("inv.xml", xmltree.Print(r.Root, 0))
 	rng := write("ksef.rng", g)
 	if out, err := exec.Command("xmllint", "--noout", "--relaxng", rng, doc).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+func TestResourceOfWithPDF(t *testing.T) {
+	m := sampleMeta()
+	r := resourceOf("received", invoice{meta: m, xml: []byte("<x/>")}, []byte("%PDF-1.3 x"))
+	if string(r.Files["pdf"]) != "%PDF-1.3 x" || string(r.Files["fa"]) != "<x/>" {
+		t.Fatalf("%v", r.Files)
+	}
+	canon.Normalize(r.Root, invoiceSchema)
+	got := xmltree.Print(r.Root, 0)
+	want := `<file id="pdf" name="5261040828-20261003-0A12BC340000-7F.pdf" size="10" sha256="` + b64sha([]byte("%PDF-1.3 x")) + `" generator="` + ksefpdf.Release() + `"/>`
+	if !strings.Contains(got, want) {
+		t.Fatalf("missing %s in\n%s", want, got)
 	}
 }

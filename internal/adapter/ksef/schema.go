@@ -29,6 +29,6 @@ var invoiceSchema = &schema.Schema{
 		{Name: "third-party", Kind: schema.Field, Repeated: true, SortKey: "id", Attrs: ro("type", "id", "role")},
 		{Name: "amounts", Kind: schema.Field, Attrs: ro("currency", "net", "vat", "gross")},
 		{Name: "corrects", Kind: schema.Field, Attrs: ro("hash")},
-		{Name: "original", Kind: schema.Attachment, ID: "id", SortKey: "id", NameAttr: "name", Attrs: ro("id", "name", "size", "sha256")},
+		{Name: "file", Kind: schema.Attachment, ID: "id", SortKey: "id", NameAttr: "name", Attrs: ro("id", "name", "size", "sha256", "generator")},
 	},
 }

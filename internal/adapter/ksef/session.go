@@ -70,7 +70,7 @@ func (s *session) List(ctx context.Context, cur string) (adapter.Listing, error)
 			return adapter.Listing{}, fmt.Errorf("%s: %w", role, err)
 		}
 		for _, inv := range invs {
-			l.Resources = append(l.Resources, resourceOf(role, inv))
+			l.Resources = append(l.Resources, resourceOf(role, inv, nil))
 		}
 		next[role] = utc(n)
 	}

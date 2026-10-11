@@ -107,3 +107,32 @@ func TestParseTarget(t *testing.T) {
 		t.Fatal(tg.token)
 	}
 }
+
+func TestPDFParameter(t *testing.T) {
+	for in, want := range map[string]string{
+		"ksef://ksef.mf.gov.pl/6887603807?pdf=yes": "ksef://ksef.mf.gov.pl/6887603807",
+		"ksef://ksef.mf.gov.pl/6887603807?pdf=no":  "ksef://ksef.mf.gov.pl/6887603807?pdf=no",
+	} {
+		u, _ := url.Parse(in)
+		n, err := normalize(u)
+		if err != nil || n.String() != want {
+			t.Errorf("%s: %v %v", in, n, err)
+		}
+	}
+	u, _ := url.Parse("ksef://ksef.mf.gov.pl/6887603807?pdf=maybe")
+	if _, err := normalize(u); err == nil || !strings.Contains(err.Error(), "pdf=maybe: want yes or no") {
+		t.Fatal(err)
+	}
+	store := entries{}
+	env := func(string) string { return "tok" }
+	for raw, want := range map[string]bool{"ksef://test.ksef.mf.gov.pl/6887603807": true, "ksef://test.ksef.mf.gov.pl/6887603807?pdf=no": false} {
+		u, _ := url.Parse(raw)
+		tg, err := parseTarget(u, env, store)
+		if err != nil || tg.pdf != want {
+			t.Errorf("%s: pdf=%v %v", raw, tg.pdf, err)
+		}
+	}
+	if qrBase["test.ksef.mf.gov.pl"] != "https://qr-test.ksef.mf.gov.pl" || qrBase["ksef.mf.gov.pl"] != "https://qr.ksef.mf.gov.pl" || qrBase["demo.ksef.mf.gov.pl"] != "https://qr-demo.ksef.mf.gov.pl" {
+		t.Fatal(qrBase)
+	}
+}

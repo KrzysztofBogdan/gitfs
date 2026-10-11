@@ -114,7 +114,14 @@ func TestPlacer(t *testing.T) {
 	if r, ok := a.ResourceOf(origPath("issued", k)); !ok || r != metaPath("issued", k) {
 		t.Fatal(r)
 	}
-	for _, p := range []string{"issued/2026/10/scan.pdf", "_gfs/issued/2026/10/" + k + ".xml", "other/2026/10/" + k + ".xml", k + ".xml"} {
+	pdf := "issued/2026/10/" + k + ".pdf"
+	if a.AttachmentPath(metaPath("issued", k), k+".pdf") != pdf {
+		t.Fatal(a.AttachmentPath(metaPath("issued", k), k+".pdf"))
+	}
+	if r, ok := a.ResourceOf(pdf); !ok || r != metaPath("issued", k) {
+		t.Fatalf("a PDF belongs to its invoice: %q", r)
+	}
+	for _, p := range []string{"issued/2026/10/scan.txt", "_gfs/issued/2026/10/" + k + ".xml", "other/2026/10/" + k + ".xml", k + ".xml"} {
 		if _, ok := a.ResourceOf(p); ok {
 			t.Error(p)
 		}
