@@ -37,9 +37,7 @@ the mirror only grows: a pull adds new invoices and never re-reads old ones.
 ### Non-goals
 
 * Sending invoices, UPO receipts, offline mode, QR codes.
-* PDF visualisations. KSeF's API serves no PDF: the web app renders it in
-  the browser with the Ministry's `ksef-pdf-generator` (TypeScript). A later
-  spec adds `<ksef>.pdf` next to the original; this layout leaves room.
+* PDF visualisations: see `2026-10-11-ksef-pdf-design.md`.
 * The `SubjectAuthorized` role, PEF and FA_RR forms beyond mirroring their
   XML as they come.
 * Managing tokens, permissions or certificates.

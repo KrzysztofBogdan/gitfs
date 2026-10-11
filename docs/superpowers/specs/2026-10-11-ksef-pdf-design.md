@@ -246,8 +246,9 @@ when `pdf` is not nil.
   its hash, renders it with a renderer of its own and writes the PDF.
 * `ResourceOf` accepts `<role>/<yyyy>/<mm>/<name>.pdf` as well as `.xml`,
   both owned by `_gfs/<role>/<yyyy>/<mm>/<name>.xml`.
-* Read-only rules apply to PDFs as to originals: an edited or deleted PDF
-  is refused by `gfs commit`; `gfs get <pdf>` restores it.
+* Read-only rules apply to PDFs as to originals: an edited PDF is refused
+  by `gfs commit`; a removed one is, like a removed original, merely not
+  downloaded; `gfs get <pdf>` restores either.
 
 ### 5.4 Old invoices and new releases
 
