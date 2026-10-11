@@ -250,6 +250,13 @@ func (s *Server) SetFields(project, typeID string, fs ...Field) {
 	s.fields[project+"/"+typeID] = fs
 }
 
+// Fields returns a copy of the create-screen fields of an issue type.
+func (s *Server) Fields(project, typeID string) []Field {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.fields[project+"/"+typeID])
+}
+
 func (s *Server) AddUser(u User) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

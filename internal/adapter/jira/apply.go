@@ -110,6 +110,15 @@ func (s *session) Check(ctx context.Context, req adapter.ApplyRequest) []adapter
 	if err := generated(req); err != nil {
 		return failAll(out, err)
 	}
+	if i := moveIndex(req.Actions); i >= 0 { // the rest runs after the move, against the target
+		m, err := s.planMove(ctx, req)
+		if err != nil {
+			out[i].Err = err
+			return out
+		}
+		out[i].Class, out[i].Detail, out[i].Warning = m.class(), m.detail(), m.warning()
+		return out
+	}
 	switch i, verb := resourceVerb(req.Actions); verb {
 	case "create":
 		out[i].Err = s.checkCreate(ctx, req)

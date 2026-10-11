@@ -51,7 +51,7 @@ func (*Adapter) DependsOn(local *adapter.Resource) []string {
 func (*Adapter) Name() string                 { return "jira" }
 func (*Adapter) Schemes() []string            { return []string{"jira"} }
 func (*Adapter) Schema() *schema.Schema       { return issueSchema }
-func (*Adapter) PathModel() adapter.PathModel { return adapter.Flat }
+func (*Adapter) PathModel() adapter.PathModel { return adapter.DirTree }
 func (*Adapter) Verbs() []adapter.Verb        { return nil }
 func (*Adapter) DefaultDir(u *url.URL) string { return defaultDir(u) }
 
@@ -118,6 +118,9 @@ func (*Adapter) Describe(a *adapter.Action, local *adapter.Resource) {
 				break
 			}
 		}
+	case a.Verb == "move":
+		a.Preview = true // Check knows what the target cannot hold (jira move spec §5.1)
+		a.Detail = "move to " + strings.ToUpper(topDir(a.To))
 	case a.Verb == "delete":
 		a.Detail = "delete issue"
 	case a.Verb == "update" && a.Group == "status":
