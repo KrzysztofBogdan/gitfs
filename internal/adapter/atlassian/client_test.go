@@ -321,3 +321,10 @@ func TestUnauthorizedHint(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAPIErrorMessageList(t *testing.T) {
+	e := &APIError{Body: `{"errors":[{"message":"one"},{"message":"two"}]}`}
+	if got := e.Message(); got != "one; two" {
+		t.Fatal(got)
+	}
+}

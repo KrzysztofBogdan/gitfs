@@ -79,6 +79,16 @@ func (e *APIError) Message() string {
 			}
 		}
 	}
+	var list struct {
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if json.Unmarshal([]byte(e.Body), &list) == nil { // bulk APIs: a list of messages
+		for _, it := range list.Errors {
+			if it.Message != "" {
+				parts = append(parts, it.Message)
+			}
+		}
+	}
 	keys := make([]string, 0, len(e.Fields))
 	for k := range e.Fields {
 		keys = append(keys, k)

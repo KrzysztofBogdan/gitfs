@@ -68,6 +68,9 @@ func (s *session) Apply(ctx context.Context, req adapter.ApplyRequest) []adapter
 	if err := generated(req); err != nil {
 		return failAll(out, err)
 	}
+	if i := moveIndex(req.Actions); i >= 0 {
+		return s.applyMove(ctx, req, i)
+	}
 	switch i, verb := resourceVerb(req.Actions); verb {
 	case "create":
 		return s.create(ctx, req)
@@ -76,6 +79,12 @@ func (s *session) Apply(ctx context.Context, req adapter.ApplyRequest) []adapter
 		out[i].Err, out[i].Code = err, atlassian.Code(err)
 		return out
 	}
+	return s.applyIssue(ctx, req, out)
+}
+
+// applyIssue runs the field edits and transition, then comments, worklogs,
+// links and attachments of an existing issue (jira spec §7.2).
+func (s *session) applyIssue(ctx context.Context, req adapter.ApplyRequest, out []adapter.Result) []adapter.Result {
 	ic, err := s.issueCtx(ctx, req.Local)
 	if err != nil {
 		return failAll(out, err)

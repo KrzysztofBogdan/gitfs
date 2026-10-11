@@ -2,13 +2,17 @@ package jira
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
+	"github.com/KrzysztofBogdan/gitfs/internal/changes"
+	"github.com/KrzysztofBogdan/gitfs/internal/envelope"
 	"github.com/KrzysztofBogdan/gitfs/internal/xmltree"
 )
 
@@ -400,4 +404,153 @@ func putText(root *xmltree.Node, name, text string) {
 	}
 	n.Attrs = nil
 	n.Children = []*xmltree.Node{{Kind: xmltree.Text, Text: text}}
+}
+
+// moveTimeout is how long gfs waits for Jira's move task.
+var moveTimeout = 2 * time.Minute
+
+// applyMove moves the issue, then applies the rest of the file against the
+// moved issue (jira move spec §5.4).
+func (s *session) applyMove(ctx context.Context, req adapter.ApplyRequest, mi int) []adapter.Result {
+	out := results(req.Actions)
+	m, err := s.planMove(ctx, req)
+	if err != nil {
+		return failAll(out, err)
+	}
+	var refresh []string
+	if !m.noop {
+		if refresh, err = s.bulkMove(ctx, m); err != nil {
+			return failAll(out, err)
+		}
+	}
+	is, err := s.getIssue(ctx, m.id)
+	if err != nil {
+		return failAll(out, err)
+	}
+	post, err := s.resource(ctx, is, true)
+	if err != nil {
+		return failAll(out, err)
+	}
+	adj := m.adjusted
+	adj.SetAttr("key", is.Key)
+	if !m.noop && m.statusTo == "" {
+		putText(adj, "status", textOf(child(post.Root, "status")))
+	}
+	acts := changes.ResolveActions(&Adapter{}, post.Root, &envelope.Doc{Content: adj}, post.Path, post.Path)
+	for _, a := range req.Actions {
+		if a.IsAttachment() {
+			acts = append(acts, a)
+		}
+	}
+	inner := req
+	inner.Local = &adapter.Resource{ID: m.id, Path: post.Path, Root: adj}
+	inner.Base, inner.Actions = post, acts
+	done := s.applyIssue(ctx, inner, results(acts))
+	out[mi].Detail, out[mi].Refresh = is.Key, refresh
+	matched := make([]bool, len(done))
+	for i, a := range req.Actions {
+		if i == mi {
+			continue
+		}
+		for j, d := range done {
+			if !matched[j] && sameAction(a, d.Action) {
+				matched[j] = true
+				out[i].Err, out[i].Code, out[i].ID, out[i].Version = d.Err, d.Code, d.ID, d.Version
+				break
+			}
+		}
+	}
+	for j, d := range done { // a value re-set by name after the move, not asked for by the file's own changes
+		if !matched[j] && d.Err != nil {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func sameAction(a, b adapter.Action) bool {
+	return a.Verb == b.Verb && a.Target == b.Target && a.Group == b.Group && a.File == b.File
+}
+
+// bulkMove submits the move and waits for it; it returns the ids of the
+// other issues the move took along (its sub-tasks).
+func (s *session) bulkMove(ctx context.Context, m *movePlan) ([]string, error) {
+	group := map[string]any{
+		"inferClassificationDefaults": true, "inferFieldDefaults": true, "inferSubtaskTypeDefault": true,
+		"inferStatusDefaults": m.statusTo == "", "issueIdsOrKeys": []string{m.id},
+	}
+	if m.statusTo != "" {
+		group["targetStatus"] = []any{map[string]any{"statuses": map[string][]string{m.statusTo: {m.statusFrom}}}}
+	}
+	body := map[string]any{"sendBulkNotification": false,
+		"targetToSourcesMapping": map[string]any{m.to.ID + "," + m.typ.ID: group}}
+	var resp struct {
+		TaskID string `json:"taskId"`
+	}
+	if err := s.c.Do(ctx, http.MethodPost, "/rest/api/3/bulk/issues/move", body, &resp); err != nil {
+		return nil, fmt.Errorf("move %s to %s: %w", m.key, m.to.Key, err)
+	}
+	return s.waitMove(ctx, m, resp.TaskID)
+}
+
+// waitMove polls the move task until it ends or moveTimeout passes.
+func (s *session) waitMove(ctx context.Context, m *movePlan, task string) ([]string, error) {
+	var waited time.Duration
+	for {
+		var q struct {
+			Status    string                     `json:"status"`
+			Processed []json.Number              `json:"processedAccessibleIssues"`
+			Failed    map[string]json.RawMessage `json:"failedAccessibleIssues"`
+		}
+		if err := s.c.Do(ctx, http.MethodGet, "/rest/api/3/bulk/queue/"+url.PathEscape(task), nil, &q); err != nil {
+			return nil, fmt.Errorf("move %s to %s (task %s): %w", m.key, m.to.Key, task, err)
+		}
+		switch q.Status {
+		case "COMPLETE":
+			if msg, ok := q.Failed[m.id]; ok {
+				return nil, fmt.Errorf("move %s to %s failed: %s", m.key, m.to.Key, failText(msg))
+			}
+			var others []string
+			for _, n := range q.Processed {
+				if n.String() != m.id {
+					others = append(others, n.String())
+				}
+			}
+			return others, nil
+		case "FAILED", "CANCELLED", "DEAD":
+			var msgs []string
+			for _, raw := range q.Failed {
+				msgs = append(msgs, failText(raw))
+			}
+			sort.Strings(msgs)
+			return nil, fmt.Errorf("move %s to %s: task %s %s: %s", m.key, m.to.Key, task, strings.ToLower(q.Status), strings.Join(msgs, "; "))
+		}
+		if waited >= moveTimeout {
+			return nil, fmt.Errorf("move still running in Jira (task %s); run gfs pull before committing again", task)
+		}
+		d := 500 * time.Millisecond
+		if waited >= 5*time.Second {
+			d = time.Second
+		}
+		s.report(adapter.Progress{Phase: "wait", Item: fmt.Sprintf("moving %s to %s", m.key, m.to.Key)})
+		if err := s.c.Sleep(ctx, d); err != nil {
+			return nil, err
+		}
+		waited += d
+	}
+}
+
+// failText is a failed issue's messages: a list of strings, or {"errors":[…]}.
+func failText(raw json.RawMessage) string {
+	var list []string
+	if json.Unmarshal(raw, &list) == nil {
+		return strings.Join(list, "; ")
+	}
+	var obj struct {
+		Errors []string `json:"errors"`
+	}
+	if json.Unmarshal(raw, &obj) == nil && len(obj.Errors) > 0 {
+		return strings.Join(obj.Errors, "; ")
+	}
+	return string(raw)
 }

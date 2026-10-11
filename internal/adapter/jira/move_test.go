@@ -1,8 +1,10 @@
 package jira
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter"
 	"github.com/KrzysztofBogdan/gitfs/internal/adapter/jira/jtest"
@@ -130,5 +132,92 @@ func TestCheckMoveRequired(t *testing.T) {
 	}))
 	if got[0].Err != nil {
 		t.Fatal(got[0].Err)
+	}
+}
+
+func TestMoveLossless(t *testing.T) {
+	srv, s := moveSite(t)
+	id, sub := srv.ID("GEN-1"), srv.ID("GEN-2")
+	got := s.Apply(bg, moved(t, srv, s, "GEN-1", "ops", nil))
+	if got[0].Err != nil || got[0].Detail != "OPS-1" || len(got[0].Refresh) != 1 || got[0].Refresh[0] != sub {
+		t.Fatalf("%+v", got[0])
+	}
+	if is := srv.Issue(id); is.Project != "OPS" || is.Status != "To Do" {
+		t.Fatalf("%+v", is)
+	}
+	body := strings.Join(srv.MoveBodies, "")
+	for _, part := range []string{`"sendBulkNotification":false`, `"10020,1"`, `"inferStatusDefaults":false`, `"1":["1"]`} {
+		if !strings.Contains(body, part) {
+			t.Errorf("body lacks %s: %s", part, body)
+		}
+	}
+}
+
+func TestMoveEditedStatus(t *testing.T) {
+	srv, s := moveSite(t)
+	req := moved(t, srv, s, "GEN-1", "ops", func(r *xmltree.Node) { setText(r, "status", "Done") })
+	req.Actions = append(req.Actions, adapter.Action{Verb: "update", Group: "status"})
+	got := s.Apply(bg, req)
+	if got[0].Err != nil || got[1].Err != nil || srv.Issue(srv.ID("OPS-1")).Status != "Done" {
+		t.Fatalf("%+v", got)
+	}
+	if srv.Count("POST", "/rest/api/3/issue/") != 0 {
+		t.Fatal("the move sets the status; no transition")
+	}
+}
+
+func TestMoveThenEdits(t *testing.T) {
+	srv, s := moveSite(t)
+	req := moved(t, srv, s, "GEN-1", "ops", func(r *xmltree.Node) {
+		setText(r.Child("labels"), "label", "ops")
+		r.Children = append(r.Children, parse(t, `<comment><paragraph>moved here</paragraph></comment>`))
+	})
+	req.Actions = append(req.Actions, adapter.Action{Verb: "update", Group: "labels"}, adapter.Action{Verb: "create", Target: "comment[1]"})
+	got := s.Apply(bg, req)
+	for _, r := range got {
+		if r.Err != nil {
+			t.Fatalf("%+v", got)
+		}
+	}
+	is := srv.Issue(srv.ID("OPS-1"))
+	if len(is.Comments) != 1 || !strings.Contains(fmt.Sprint(is.Fields["labels"]), "ops") {
+		t.Fatalf("%+v", is)
+	}
+}
+
+func TestMoveAlreadyMoved(t *testing.T) {
+	srv, s := moveSite(t)
+	req := moved(t, srv, s, "GEN-1", "ops", func(r *xmltree.Node) { setText(r, "summary", "Migrate auth now") })
+	req.Actions = append(req.Actions, adapter.Action{Verb: "update", Group: "summary"})
+	srv.Move(srv.ID("GEN-1"), "OPS")
+	got := s.Apply(bg, req)
+	if got[0].Err != nil || got[1].Err != nil || len(srv.MoveBodies) != 0 || srv.Issue(srv.ID("OPS-1")).Summary != "Migrate auth now" {
+		t.Fatalf("%+v bodies %d", got, len(srv.MoveBodies))
+	}
+}
+
+func TestMoveFailures(t *testing.T) {
+	srv, s := moveSite(t)
+	srv.MoveFail = "boom"
+	req := moved(t, srv, s, "GEN-1", "ops", nil)
+	req.Actions = append(req.Actions, adapter.Action{Verb: "update", Group: "labels"})
+	got := s.Apply(bg, req)
+	if got[0].Err == nil || !strings.Contains(got[0].Err.Error(), "boom") || got[1].Err == nil {
+		t.Fatalf("%+v", got)
+	}
+
+	srv, s = moveSite(t)
+	srv.MoveRunning = 1000
+	defer func(d time.Duration) { moveTimeout = d }(moveTimeout)
+	moveTimeout = 3 * time.Second
+	got = s.Apply(bg, moved(t, srv, s, "GEN-1", "ops", nil))
+	if got[0].Err == nil || !strings.HasPrefix(got[0].Err.Error(), "move still running in Jira (task ") {
+		t.Fatalf("%+v", got)
+	}
+
+	srv, s = moveSite(t)
+	srv.Fail["POST /rest/api/3/bulk/issues/move"] = 400
+	if got = s.Apply(bg, moved(t, srv, s, "GEN-1", "ops", nil)); got[0].Err == nil || srv.Issue(srv.ID("GEN-1")).Project != "GEN" {
+		t.Fatal("a refused move fails and moves nothing")
 	}
 }
