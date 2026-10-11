@@ -1,0 +1,20 @@
+[
+ {
+  "xml": "fa3.xml",
+  "pdf": "fa3.pdf",
+  "ksef": "1234563218-20260810-0100A1B2C3D4-5E",
+  "qrBase": "https://qr.ksef.mf.gov.pl",
+  "clockMs": 1786356930123,
+  "acDate": "10.08.2026",
+  "qrCode": "https://qr.ksef.mf.gov.pl/invoice/1234563218/10-08-2026/x2pEmkt0FxlBf0bAE-uHVT053o6NpJumvucYGaNVFAs"
+ },
+ {
+  "xml": "upstream-example.xml",
+  "pdf": "upstream-example.pdf",
+  "ksef": "5555555555-20250808-9231003CA67B-BE",
+  "qrBase": "https://qr.ksef.mf.gov.pl",
+  "clockMs": 1774150074079,
+  "acDate": "08.08.2025",
+  "qrCode": "https://qr.ksef.mf.gov.pl/invoice/5265877635/31-10-2025/OmE5U9cjvIU6pc3yL3bxV0D96hteDTCwMdB0gaJ5KhM"
+ }
+]
