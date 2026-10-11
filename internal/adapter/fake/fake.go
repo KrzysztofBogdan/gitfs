@@ -66,6 +66,8 @@ type Remote struct {
 	CheckWarn    map[string]string        // "verb group" -> Result.Warning from Check
 	Preview      map[string]bool          // verb -> Describe sets Action.Preview
 	Checks       int                      // Check calls
+	Refresh      map[string][]string      // verb -> Result.Refresh of a successful action
+	Moves        map[string]string        // record id -> path it moves to when Apply reports it in Refresh
 	Warn         map[string]string        // Action.Detail -> Action.Warning set by Describe
 	NeedSecret   bool                     // Apply reads a secret for comment creates
 	Secrets      []string                 // secrets Apply read
@@ -471,6 +473,14 @@ func (s session) Apply(_ context.Context, req adapter.ApplyRequest) []adapter.Re
 			s.applySub(rec.root, req.Local.Root, a)
 		case a.Verb == "publish":
 			s.r.Published = append(s.r.Published, req.Local.Path+" "+a.Params["channel"])
+		}
+		if ids := s.r.Refresh[a.Verb]; len(ids) > 0 {
+			res.Refresh = ids
+			for _, id := range ids {
+				if p, ok := s.r.Moves[id]; ok {
+					s.r.Move(id, p)
+				}
+			}
 		}
 		changed = true
 		out = append(out, res)

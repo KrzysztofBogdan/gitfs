@@ -121,10 +121,16 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		}
 	}
 	e.renamed = map[string]string{}
+	e.uncommitted = map[string]bool{}
+	for _, fc := range cs {
+		if fc.ID != "" {
+			e.uncommitted[fc.ID] = true
+		}
+	}
 	if o.DryRun {
 		e.creates = adds
 	}
-	defer func() { e.renamed, e.creates = nil, nil }()
+	defer func() { e.renamed, e.creates, e.uncommitted = nil, nil, nil }()
 	failed := map[string]bool{}
 	var r Report
 	for _, fc := range cs {
@@ -154,6 +160,7 @@ func Commit(ctx context.Context, e *Env, o CommitOpts) (Report, error) {
 		if err != nil {
 			return r, err
 		}
+		delete(e.uncommitted, fc.ID) // committed: a later refresh may move it
 	}
 	footer := fmt.Sprintf("%s, %d failed, %d denied", plural(r.Actions, "action"), r.Failed, r.Denied)
 	if r.Conflicts > 0 {
@@ -539,7 +546,10 @@ func (e *Env) finish(ctx context.Context, fc changes.FileChange, content *xmltre
 	if err := e.StoreBase(remote, fc.Entry.Path); err != nil {
 		return err
 	}
-	return e.syncCommitted(id, path, remote.Root, results)
+	if err := e.syncCommitted(id, path, remote.Root, results); err != nil {
+		return err
+	}
+	return e.refresh(ctx, fc, results, r)
 }
 
 // keepLocal puts the local form of failed parts back into the written-back tree,

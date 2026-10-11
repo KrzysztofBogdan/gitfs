@@ -37,6 +37,8 @@ type Env struct {
 	// moved files, and in a dry run the new files the commit would create.
 	renamed map[string]string
 	creates map[string]bool
+	// ids of the running commit's files not committed yet (jira move spec §4.2)
+	uncommitted map[string]bool
 }
 
 func (e *Env) report(p adapter.Progress) {

@@ -117,6 +117,9 @@ type Result struct {
 	Partial bool
 	Class   string // Check: the policy class, when it differs from Describe's
 	Warning string // Check: printed before the ask and in a dry run
+	// Refresh: ids of other resources the action changed (the sub-tasks a
+	// move took along); the engine re-reads them (jira move spec §4.2).
+	Refresh []string
 }
 
 // AttachmentInfo describes downloaded attachment bytes.
