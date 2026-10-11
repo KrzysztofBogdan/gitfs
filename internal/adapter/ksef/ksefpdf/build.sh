@@ -22,10 +22,12 @@ rm src/gfs-golden.spec.ts
 # The gfs build: fonts come from Go.
 cp "$here/build/gfs-entry.ts" "$here/build/gfs-empty-vfs.js" src/
 node "$here/build/patch-vite.cjs" vite.config.ts
-GFS=1 npm run build >/dev/null
+GFS=1 npm run build -- --sourcemap >/dev/null
 mkdir -p "$here/assets"
-cp dist/ksef-fe-invoice-converter.umd.cjs "$here/assets/generator.js"
+sed '/^\/\/# sourceMappingURL=/d' dist/ksef-fe-invoice-converter.umd.cjs > "$here/assets/generator.js"
 node "$here/build/fonts.cjs" "$here/assets"
 cp LICENSE "$here/assets/LICENSE"
-node "$here/build/licences.cjs" > "$here/assets/THIRD-PARTY.txt"
-echo "$(node -p 'require("./package.json").version') $(git rev-parse --short=7 HEAD)" > "$here/assets/VERSION"
+node "$here/build/licences.cjs" dist/ksef-fe-invoice-converter.umd.cjs.map > "$here/assets/THIRD-PARTY.txt"
+version=$(node -p 'require("./package.json").version')
+rev=$(git rev-parse --short=7 HEAD)
+echo "$version $rev" > "$here/assets/VERSION"

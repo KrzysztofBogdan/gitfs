@@ -118,8 +118,13 @@ KSeF request.
 * `gfs pull --full` adds PDFs to invoices mirrored before gfs drew them,
   and draws all of them again when a gfs upgrade brings a new generator
   release; a PDF you changed is kept.
+* A pull holds the PDFs it draws in memory until it writes them: about
+  40 KB each, so a `pull --full` over 20,000 invoices needs about 1 GB.
 * `?pdf=no` turns PDFs off.
 * The XML is the invoice; the PDF is a picture of it.
+* The generator is MIT-licensed; it and the code it bundles keep their
+  licences, listed with the Roboto font's in
+  `internal/adapter/ksef/ksefpdf/assets/` (`LICENSE`, `THIRD-PARTY.txt`).
 
 ## Read-only
 

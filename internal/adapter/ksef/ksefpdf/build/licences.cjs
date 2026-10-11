@@ -1,24 +1,57 @@
-// Prints the licences of the generator's production dependencies, which
-// the bundle contains, then Roboto's (ksef pdf spec §3.1).
-const { execSync } = require('child_process');
+// Prints the licences of the code inside the built bundle (ksef pdf spec
+// §3.1), then Roboto's: the packages named by the bundle's source map
+// (argv[2]) and by pdfmake's own prebuilt bundle, whose source map pdfmake
+// ships. A package that is not installed (pdfmake's build-time polyfills)
+// has its licence fetched from the npm registry with npm pack.
+const { execFileSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-let ls;
-try {
-  ls = execSync('npm ls --omit=dev --all --parseable', { encoding: 'utf8' });
-} catch (e) {
-  ls = e.stdout;
+
+function packagesOf(mapFile) {
+  const m = JSON.parse(fs.readFileSync(mapFile, 'utf8'));
+  const out = new Set();
+  for (const s of m.sources) {
+    const re = /node_modules\/((?:@[^/]+\/)?[^/]+)/g;
+    let x, last;
+    while ((x = re.exec(s))) last = x[1];
+    if (last) out.add(last);
+  }
+  return out;
 }
-const seen = new Set();
+
+function licenceIn(dir) {
+  const f = fs.readdirSync(dir).find((n) => /^(licen[cs]e|copying)/i.test(n));
+  return f ? fs.readFileSync(path.join(dir, f), 'utf8').trim() : '';
+}
+
+function fromRegistry(name) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gfs-lic-'));
+  try {
+    const tgz = execFileSync('npm', ['pack', name, '--silent', '--pack-destination', tmp], { encoding: 'utf8' }).trim().split('\n').pop();
+    execFileSync('tar', ['xzf', path.join(tmp, tgz), '-C', tmp]);
+    const pj = JSON.parse(fs.readFileSync(path.join(tmp, 'package', 'package.json'), 'utf8'));
+    return { version: pj.version + ', latest at build time; the bundled one may differ', license: pj.license, text: licenceIn(path.join(tmp, 'package')) };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+const names = packagesOf(process.argv[2]);
+if (names.has('pdfmake')) {
+  for (const n of packagesOf('node_modules/pdfmake/build/pdfmake.js.map')) names.add(n);
+}
 const out = [];
-for (const d of ls.trim().split('\n').slice(1)) {
-  const pj = JSON.parse(fs.readFileSync(path.join(d, 'package.json'), 'utf8'));
-  const key = pj.name + '@' + pj.version;
-  if (seen.has(key)) continue;
-  seen.add(key);
-  const lic = fs.readdirSync(d).find((f) => /^(licen[cs]e|copying)/i.test(f));
-  out.push('== ' + key + ' (' + (pj.license || 'unstated') + ')\n' +
-    (lic ? fs.readFileSync(path.join(d, lic), 'utf8').trim() : '(the package has no licence file)'));
+for (const name of [...names].sort()) {
+  const dir = path.join('node_modules', name);
+  let e;
+  if (fs.existsSync(path.join(dir, 'package.json'))) {
+    const pj = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    e = { version: pj.version, license: pj.license, text: licenceIn(dir) };
+  } else {
+    e = fromRegistry(name);
+  }
+  out.push('== ' + name + '@' + e.version + ' (' + (e.license || 'unstated') + ')\n' + (e.text || '(the package has no licence file)'));
 }
-out.push('== Roboto fonts (Apache-2.0)\nCopyright Google LLC. Licensed under the Apache License, Version 2.0:\nhttps://www.apache.org/licenses/LICENSE-2.0');
+out.push('== Roboto fonts (Apache-2.0), Copyright Google LLC\n' + fs.readFileSync(path.join(__dirname, 'APACHE-2.0.txt'), 'utf8').trim());
 console.log(out.join('\n\n'));
