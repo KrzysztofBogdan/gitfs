@@ -144,3 +144,14 @@ func TestInterrupt(t *testing.T) {
 		t.Fatalf("a cancelled context interrupts: %v", err)
 	}
 }
+
+func TestTimeoutScales(t *testing.T) {
+	if timeoutFor(500) != renderTimeout {
+		t.Fatal("a small invoice gets the base limit")
+	}
+	// about 15 ms per invoice line, a line about 400 bytes of XML: a 4000-line
+	// invoice (1.6 MB) needs about 60 s on a fast machine
+	if got := timeoutFor(1600 << 10); got < renderTimeout+5*time.Minute {
+		t.Fatalf("a large invoice gets room for slow machines: %v", got)
+	}
+}

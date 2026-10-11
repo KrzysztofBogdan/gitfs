@@ -17,8 +17,17 @@ import (
 //go:embed shim.js
 var shimJS string
 
-// renderTimeout bounds one render (ksef pdf spec §4.1); tests shorten it.
+// renderTimeout bounds the render of a small invoice (ksef pdf spec §4.1);
+// tests shorten it. It only stops a generator that never finishes.
 var renderTimeout = 60 * time.Second
+
+// timeoutPerKB is added per KB of XML: rendering takes about 15 ms per
+// invoice line (about 40 ms per KB) on a fast machine; five times that keeps
+// a slow or busy machine from timing out where a fast one does not.
+const timeoutPerKB = 200 * time.Millisecond
+
+// timeoutFor is the limit for an original of n bytes.
+func timeoutFor(n int) time.Duration { return renderTimeout + time.Duration(n/1024)*timeoutPerKB }
 
 // clockFromXML asks render for the render time of §4.3.
 const clockFromXML = -1
@@ -117,7 +126,8 @@ func (r *Renderer) render(ctx context.Context, in Input, clockMs int64) ([]byte,
 		clockMs = f.clockMs
 	}
 	r.vm.Set("__now", clockMs)
-	timer := time.AfterFunc(renderTimeout, func() { r.vm.Interrupt(errTimeout) })
+	limit := timeoutFor(len(in.XML))
+	timer := time.AfterFunc(limit, func() { r.vm.Interrupt(errTimeout) })
 	stop := context.AfterFunc(ctx, func() { r.vm.Interrupt(ctx.Err()) })
 	pdf, err := r.run(f, in.KsefNumber)
 	timer.Stop()
@@ -127,7 +137,7 @@ func (r *Renderer) render(ctx context.Context, in Input, clockMs int64) ([]byte,
 	if errors.As(err, &ie) {
 		r.broken = true
 		if ie.Value() == errTimeout {
-			return nil, fmt.Errorf("the generator ran longer than %v", renderTimeout)
+			return nil, fmt.Errorf("the generator ran longer than %v", limit)
 		}
 		if e, ok := ie.Value().(error); ok {
 			return nil, e

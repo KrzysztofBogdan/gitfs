@@ -130,7 +130,8 @@ func (r *Renderer) Render(in Input) ([]byte, error)
 
 then runs the timer queue until the promise settles and decodes the
 base64. A JavaScript exception is an error carrying its message, e.g.
-`Unknown XML Version: FA (9)`. A render that runs longer than 60 s is
+`Unknown XML Version: FA (9)`. A render that runs longer than 60 s plus
+200 ms per KB of XML (five times what a fast machine needs) is
 interrupted (`Runtime.Interrupt`) and fails; the renderer is then
 discarded.
 
