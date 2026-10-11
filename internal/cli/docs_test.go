@@ -34,6 +34,6 @@ func TestDocsCommands(t *testing.T) {
 }
 
 func TestKSeFDocs(t *testing.T) {
-	mustContain(t, mustRun(t, 0, "schema", "ksef"), `<element name="original">`)
+	mustContain(t, mustRun(t, 0, "schema", "ksef"), `<element name="file">`)
 	mustContain(t, mustRun(t, 0, "help", "ksef"), "ksef://ksef.mf.gov.pl/<nip>", "20 exports an hour")
 }

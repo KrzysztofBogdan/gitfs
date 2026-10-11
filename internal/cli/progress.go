@@ -67,11 +67,15 @@ func attachProgress(cmd *cobra.Command, quiet bool, sess adapter.Session, out io
 	return b.update, b.writer(out)
 }
 
-// waitNotice prints retry waits as lines, for output that is not a terminal.
+// waitNotice prints retry waits and warnings as lines, for output that is
+// not a terminal.
 func waitNotice(w io.Writer) func(adapter.Progress) {
 	return func(p adapter.Progress) {
-		if p.Phase == "wait" {
+		switch p.Phase {
+		case "wait":
 			fmt.Fprintln(w, p.Item)
+		case "warn":
+			fmt.Fprintln(w, "warning: "+p.Item)
 		}
 	}
 }
@@ -81,6 +85,11 @@ func (b *bar) update(p adapter.Progress) {
 	if p.Phase == "done" {
 		b.clear()
 		b.phase, b.fetching = "", false
+		return
+	}
+	if p.Phase == "warn" {
+		b.clear()
+		fmt.Fprintln(b.w, "warning: "+p.Item)
 		return
 	}
 	changed := p.Phase != b.phase
@@ -107,6 +116,8 @@ func (b *bar) line(p adapter.Progress, now time.Time) string {
 		return "Listing…"
 	case "wait":
 		return p.Item
+	case "render":
+		return fmt.Sprintf("Rendering %d/%d PDFs  %s", p.Done, p.Total, p.Item)
 	case "pages":
 		unit := p.Unit
 		if unit == "" {

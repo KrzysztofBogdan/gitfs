@@ -42,7 +42,7 @@ func TestKSeFCloneStatusRestorePull(t *testing.T) {
 		t.Fatal("the original is byte-identical to KSeF's")
 	}
 	m, _ := os.ReadFile(meta)
-	mustContain(t, string(m), `role="issued"`, `<original id="fa"`, "sha256=\""+inv[0].Hash)
+	mustContain(t, string(m), `role="issued"`, `<file id="fa"`, "sha256=\""+inv[0].Hash)
 	if _, err := os.Stat(filepath.Join("received", "2026", "04", inv[1].KsefNumber+".xml")); err != nil {
 		t.Fatal("received invoice beside its metadata tree")
 	}
@@ -105,5 +105,62 @@ func TestKSeFRolesNarrowed(t *testing.T) {
 	}
 	if ex := srv.Exports(); len(ex) == 0 || ex[0].Subject != "Subject2" {
 		t.Fatalf("%+v", ex)
+	}
+}
+
+func ksefFA3(t *testing.T) []byte {
+	t.Helper()
+	b, err := os.ReadFile("../adapter/ksef/ksefpdf/testdata/fa3.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestKSeFPDF(t *testing.T) {
+	srv := kseftest.New()
+	t.Cleanup(srv.Close)
+	srv.Add(kseftest.Invoice{Subject: "Subject2", Stored: time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC), XML: ksefFA3(t)})
+	ksefClone(t, srv, "")
+	k := srv.Invoices()[0].KsefNumber
+	pdf := filepath.Join("received", "2026", "08", k+".pdf")
+	b, err := os.ReadFile(pdf)
+	if err != nil || !strings.HasPrefix(string(b), "%PDF-") {
+		t.Fatalf("the PDF beside the original: %v", err)
+	}
+	m, _ := os.ReadFile(filepath.Join("_gfs", "received", "2026", "08", k+".xml"))
+	mustContain(t, string(m), `<file id="pdf" name="`+k+`.pdf"`, `generator="`)
+	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
+
+	os.WriteFile(pdf, append(b, ' '), 0o644)
+	mustContain(t, mustRun(t, 0, "status"), "read-only")
+	os.Remove(pdf) // a missing attachment is not downloaded, not deleted
+	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
+	mustRun(t, 0, "get", pdf)
+	if b2, _ := os.ReadFile(pdf); string(b2) != string(b) {
+		t.Fatal("gfs get renders the same PDF")
+	}
+	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
+}
+
+func TestKSeFPullFullAddsPDFs(t *testing.T) {
+	srv := kseftest.New()
+	t.Cleanup(srv.Close)
+	srv.Add(kseftest.Invoice{Subject: "Subject2", Stored: time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC), XML: ksefFA3(t)})
+	ksefClone(t, srv, "&pdf=no")
+	k := srv.Invoices()[0].KsefNumber
+	pdf := filepath.Join("received", "2026", "08", k+".pdf")
+	if _, err := os.Stat(pdf); err == nil {
+		t.Fatal("pdf=no renders nothing")
+	}
+	replaceIn(t, filepath.Join(".gfs", "config"), "pdf=no&", "") // canonical: ?pdf=no&base=…
+	out := mustRun(t, 0, "pull", "--full")
+	mustContain(t, out, "~  ")
+	if _, err := os.Stat(pdf); err != nil {
+		t.Fatalf("pull --full adds the PDF: %s", out)
+	}
+	mustContain(t, mustRun(t, 0, "status"), "nothing to commit")
+	if out := mustRun(t, 0, "pull", "--full"); strings.Contains(out, "~  ") {
+		t.Fatalf("a second --full changes nothing: %s", out)
 	}
 }

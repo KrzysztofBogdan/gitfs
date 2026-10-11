@@ -118,3 +118,24 @@ func TestWaitNoticeWithoutTerminal(t *testing.T) {
 		t.Fatalf("%q", out.String())
 	}
 }
+
+func TestBarRenderAndWarn(t *testing.T) {
+	b, out, _ := testBar(100)
+	b.update(adapter.Progress{Phase: "render", Done: 2, Total: 5, Item: "K-1"})
+	if !strings.Contains(out.String(), "Rendering 2/5 PDFs  K-1") {
+		t.Fatalf("%q", out.String())
+	}
+	b.update(adapter.Progress{Phase: "warn", Item: "PDF of K-2: boom"})
+	if !strings.HasSuffix(out.String(), "\r\x1b[Kwarning: PDF of K-2: boom\n") || b.shown {
+		t.Fatalf("a warning gets its own line: %q", out.String())
+	}
+}
+
+func TestWarnWithoutTerminal(t *testing.T) {
+	var out bytes.Buffer
+	waitNotice(&out)(adapter.Progress{Phase: "warn", Item: "PDF of K-2: boom"})
+	waitNotice(&out)(adapter.Progress{Phase: "render", Done: 1, Total: 2})
+	if out.String() != "warning: PDF of K-2: boom\n" {
+		t.Fatalf("%q", out.String())
+	}
+}
