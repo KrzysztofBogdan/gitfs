@@ -276,9 +276,12 @@ When the workflow has no direct way to the status you want, list the steps:
 Move the file to another project folder (`git mv`, a file manager) and
 commit. The project must be in the tree.
 
-* gfs keeps the file's `<type>` and `<status>` when the target has them;
+* gfs keeps the issue's type and status when the target has them;
   otherwise it picks Task (or the target's first type) and lets Jira pick
-  the status. Edit them in the moved file to choose.
+  the status. Edit `<type>` in the moved file to choose the type. An edited
+  `<status>` is reached by a transition after the move, as without a move
+  (resolution and post-functions run). A `<transitions>` block cannot ride
+  on a move: commit the move first.
 * Values the target cannot hold are dropped: fields not on its screen,
   components, versions and options it lacks. `gfs commit --dry-run` and the
   ask list them: `⚠ type Story -> Task (SUP has no Story); drops component
@@ -290,8 +293,9 @@ commit. The project must be in the tree.
 * Sub-tasks move with their parent; their files follow in the same commit
   unless they have local changes (then the next pull moves them). A
   sub-task file cannot be moved on its own.
-* Other changes to the file run after the move, against the new project.
-  If the move fails they are held back and the file keeps `<errors>`.
+* Other changes to the file run after the move, against the new project;
+  values the file did not change stay as Jira left them. If the move fails
+  they are held back and the file keeps `<errors>`.
 * No bulk notification is sent; watchers get Jira's "issue moved" event.
 * An issue moved into a service project has no Request Type and does not
   show in the customer portal.

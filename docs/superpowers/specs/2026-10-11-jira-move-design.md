@@ -34,8 +34,10 @@ will not survive the move, and asks before losing anything.
 
 - **Gesture.** `git mv "gen/GEN-760 Migrate auth.xml" sup/` (or any file
   manager), then `gfs commit`. The moved file may be edited in the same
-  commit: its `<type>`, `<status>` and field values become the target
-  values. A rename inside the same folder is still a no-op with the same
+  commit: its `<type>` and field values become the target values; an
+  edited `<status>` is reached by a transition after the move (amended
+  after the final review: a status set by the move skips resolution and
+  post-functions). A `<transitions>` block on a moved file is refused. A rename inside the same folder is still a no-op with the same
   warning.
 - **Status.** `R  gen/GEN-760 Migrate auth.xml -> sup/GEN-760 Migrate
   auth.xml`, action `move  … move to SUP`.
