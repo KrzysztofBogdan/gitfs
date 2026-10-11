@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,7 +34,8 @@ type IssueType struct {
 type Field struct {
 	ID, Name, Type, Items, Custom string
 	Required                      bool
-	Options                       []Option // select-type fields
+	Default                       bool     // createmeta hasDefaultValue
+	Options                       []Option // select-type fields; also allowedValues
 }
 
 type Option struct{ ID, Value string }
@@ -94,6 +96,7 @@ type Issue struct {
 	Assignee, Reporter, Creator string         // account ids
 	Fields                      map[string]any // every other field, as Jira JSON
 	Created, Updated            time.Time
+	OldKeys                     []string // keys before moves; they still resolve
 	Comments                    []*Comment
 	Worklogs                    []*Worklog
 	Attachments                 []*Attachment
@@ -109,6 +112,9 @@ type Server struct {
 	Requests     []string         // "METHOD /path" of every request
 	Fail         map[string]int   // "METHOD /path" -> status returned instead of handling
 	EditHidden   []string         // field ids on the create screen but not the edit screen
+	MoveRunning  int              // a bulk move task answers RUNNING this many times first
+	MoveFail     string           // a bulk move task fails with this message, moving nothing
+	MoveBodies   []string         // bodies of bulk move requests
 
 	mu        sync.Mutex
 	projects  map[string]*Project // by key
@@ -121,13 +127,14 @@ type Server struct {
 	workflows map[string]*Workflow // by "KEY/typeID"
 	seq       int
 	counters  map[string]int // next issue number per project
+	tasks     map[string]*moveTask
 }
 
 func New() *Server {
 	s := &Server{CommentLimit: 20, WorklogLimit: 20, Fail: map[string]int{},
 		projects: map[string]*Project{}, types: map[string][]IssueType{}, fields: map[string][]Field{},
 		users: map[string]*User{"me": {Account: "me", Name: "Me", Email: "me@x.com"}}, issues: map[string]*Issue{},
-		workflows: map[string]*Workflow{}, seq: 10000, counters: map[string]int{}}
+		workflows: map[string]*Workflow{}, seq: 10000, counters: map[string]int{}, tasks: map[string]*moveTask{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /rest/api/3/myself", s.myself)
 	mux.HandleFunc("GET /rest/api/3/project/search", s.projectSearch)
@@ -337,6 +344,7 @@ func (s *Server) Move(id, project string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	is := s.issues[id]
+	is.OldKeys = append(is.OldKeys, is.Key)
 	s.counters[project]++
 	is.Project, is.Key = project, fmt.Sprintf("%s-%d", project, s.counters[project])
 	is.Updated = s.now()
@@ -433,13 +441,13 @@ func (s *Server) typeOf(is *Issue) IssueType {
 }
 
 func (s *Server) statusJSON(is *Issue) map[string]any {
-	cat := "new"
+	cat, id := "new", ""
 	for _, st := range s.workflow(is).Statuses {
 		if st.Name == is.Status {
-			cat = st.Category
+			cat, id = st.Category, st.ID
 		}
 	}
-	return map[string]any{"name": is.Status, "statusCategory": map[string]any{"key": cat}}
+	return map[string]any{"id": id, "name": is.Status, "statusCategory": map[string]any{"key": cat}}
 }
 
 func (s *Server) commentJSON(is *Issue, c *Comment) map[string]any {
@@ -628,7 +636,15 @@ func fieldJSON(f Field) map[string]any {
 	if f.Custom != "" {
 		sch["custom"] = f.Custom
 	}
-	return map[string]any{"fieldId": f.ID, "key": f.ID, "name": f.Name, "required": f.Required, "schema": sch}
+	m := map[string]any{"fieldId": f.ID, "key": f.ID, "name": f.Name, "required": f.Required, "hasDefaultValue": f.Default, "schema": sch}
+	if len(f.Options) > 0 {
+		var vals []any
+		for _, o := range f.Options {
+			vals = append(vals, map[string]any{"id": o.ID, "value": o.Value, "name": o.Value})
+		}
+		m["allowedValues"] = vals
+	}
+	return m
 }
 
 func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
@@ -837,7 +853,7 @@ func (s *Server) lookup(idOrKey string) *Issue {
 		return is
 	}
 	for _, is := range s.issues {
-		if is.Key == idOrKey {
+		if is.Key == idOrKey || slices.Contains(is.OldKeys, idOrKey) {
 			return is
 		}
 	}
