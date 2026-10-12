@@ -174,3 +174,23 @@ func TestPlacedMovedOnRemoteTakesFiles(t *testing.T) {
 		t.Fatalf("%+v\n%s", cs, out)
 	}
 }
+
+// KSeF's case: listings carry the files' bytes and the pull is --full.
+func TestPlacedMovedOnRemoteWithFilesTakesFiles(t *testing.T) {
+	for _, full := range []bool{false, true} {
+		env, ad, out := placed(t)
+		fetchAll(t, env, out)
+		ad.Remote.WithFiles = true
+		if read(t, env, "a/one.x.png") != "abc" {
+			t.Fatalf("placed\n%s", out)
+		}
+		ad.Remote.Move("1", "_m/b/one.xml")
+		pull(t, env, PullOpts{Full: full})
+		if read(t, env, "b/one.x.png") != "abc" || env.Tree.Exists("a/one.x.png") {
+			t.Fatalf("full=%v: the placed file must move with its resource\n%s", full, out)
+		}
+		if cs := status(t, env); len(cs) != 0 {
+			t.Fatalf("full=%v: %+v\n%s", full, cs, out)
+		}
+	}
+}

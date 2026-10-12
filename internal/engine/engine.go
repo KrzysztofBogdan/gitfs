@@ -81,7 +81,8 @@ func (e *Env) storeFiles(res *adapter.Resource) error {
 			continue
 		}
 		p := derived[id]
-		if l, tracked := e.Atts.Get(res.ID, id); tracked && e.Tree.Exists(l.Path) {
+		l, tracked := e.Atts.Get(res.ID, id)
+		if tracked && e.Tree.Exists(l.Path) {
 			changed, err := attach.Changed(e.Tree, l.Path, l)
 			if err != nil {
 				return err
@@ -96,6 +97,11 @@ func (e *Env) storeFiles(res *adapter.Resource) error {
 		}
 		if err := e.Tree.WriteFile(p, data); err != nil {
 			return err
+		}
+		if tracked && l.Path != p && e.Tree.Exists(l.Path) { // moved with its resource
+			if err := e.Tree.Remove(l.Path); err != nil {
+				return err
+			}
 		}
 		line, err := attach.Entry(e.Tree, res.ID, id, attach.Version(els[id], el), p)
 		if err != nil {
