@@ -54,6 +54,9 @@ type Server struct {
 	Failures  map[string]*Failure // "METHOD /path" -> a failure returned Times times, then the request is served
 	Accounts  map[string]string   // email -> token for GET /wiki/rest/api/user/current; nil accepts any credentials
 	Clock     func() time.Time    // time for Stamp and search windows; nil is time.Now
+	// NumericContainers makes search hits carry container.id as a JSON
+	// number, as some hits on the real site do.
+	NumericContainers bool
 
 	mu          sync.Mutex
 	spaces      map[string]*Space // by key
@@ -399,7 +402,11 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	var items []any
 	for _, h := range hits {
 		if h.at >= since && inScope(h.page) {
-			items = append(items, map[string]any{"id": h.id, "type": m[1], "container": map[string]any{"id": h.page, "type": "page"}})
+			var cid any = h.page
+			if s.NumericContainers {
+				cid, _ = strconv.Atoi(h.page)
+			}
+			items = append(items, map[string]any{"id": h.id, "type": m[1], "container": map[string]any{"id": cid, "type": "page"}})
 		}
 	}
 	s.pagedV1(w, r, items)

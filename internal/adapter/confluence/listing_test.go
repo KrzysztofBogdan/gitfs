@@ -85,6 +85,24 @@ func TestListRefetchesPagesWithNewCommentsAndAttachments(t *testing.T) {
 	}
 }
 
+// Some search hits carry container.id as a number, not a string.
+func TestListNumericContainerIDs(t *testing.T) {
+	srv, sess := engSpace(t)
+	srv.NumericContainers = true
+	advance := clocked(srv, sess)
+	l0, _ := sess.List(bg, "")
+	advance(2 * time.Minute)
+	srv.AddAttachment(cftest.Attachment{PageID: "98130", Title: "x.png", CreatedAt: srv.Stamp()})
+	advance(3 * time.Minute)
+	l1, err := sess.List(bg, l0.Cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := full(l1); !got["98130"] {
+		t.Fatalf("full resources: %v", got)
+	}
+}
+
 func TestListIgnoresChangesBeforeWindow(t *testing.T) {
 	srv, sess := engSpace(t)
 	advance := clocked(srv, sess)

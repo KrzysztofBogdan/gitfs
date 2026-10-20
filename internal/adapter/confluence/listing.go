@@ -101,14 +101,15 @@ func (s *session) changedContainers(ctx context.Context, mins int) (map[string]b
 		err := s.c.paginate(ctx, "/wiki/rest/api/content/search?limit=250&expand=container&cql="+url.QueryEscape(cql), func(raw json.RawMessage) error {
 			var hit struct {
 				Container struct {
-					ID string `json:"id"`
+					ID json.Number `json:"id"` // a string on most hits, a number on some
 				} `json:"container"`
 			}
 			if err := json.Unmarshal(raw, &hit); err != nil {
 				return err
 			}
-			if _, ok := s.tree[hit.Container.ID]; ok {
-				out[hit.Container.ID] = true
+			id := hit.Container.ID.String()
+			if _, ok := s.tree[id]; ok {
+				out[id] = true
 			}
 			return nil
 		})
