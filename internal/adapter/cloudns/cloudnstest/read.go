@@ -129,7 +129,7 @@ func init() {
 		s.handle("get-dnssec-ds-records", func(s *Server, f form) any {
 			z := s.zone(f)
 			if !z.DNSSEC {
-				return map[string]any{"status": "0"}
+				return failed("The DNSSEC is not active.") // not {"status":"0"}
 			}
 			return map[string]any{"status": "1", "ds": []string{z.Name + ". 3600 IN DS 12626 13 2 B156B918CC62"},
 				"ds_records": []map[string]string{{"digest": "B156B918CC62", "key_tag": "12626", "algorithm": "13",

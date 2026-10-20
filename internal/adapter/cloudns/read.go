@@ -214,7 +214,7 @@ func (s *session) readZone(ctx context.Context, z string) (*xmltree.Node, error)
 				DigestType flex   `json:"digest_type"`
 			} `json:"ds_records"`
 		}
-		if err := s.c.Do(ctx, "get-dnssec-ds-records", url.Values{"domain-name": {z}}, &ds); err != nil {
+		if err := s.c.Do(ctx, "get-dnssec-ds-records", url.Values{"domain-name": {z}}, &ds); err != nil && !dnssecInactive(err) {
 			return nil, wrap(err)
 		}
 		d := el("dnssec", "status", "disabled")
@@ -299,6 +299,13 @@ func zoneMissing(err error) bool {
 	}
 	d := strings.ToLower(ae.Description)
 	return strings.Contains(d, "domain-name") || strings.Contains(d, "not found") || strings.Contains(d, "does not exist")
+}
+
+// dnssecInactive reports whether ClouDNS refused get-dnssec-ds-records
+// because DNSSEC is off for the zone: it answers Failed, not status 0.
+func dnssecInactive(err error) bool {
+	var ae *APIError
+	return errors.As(err, &ae) && ae.Status == 0 && strings.Contains(strings.ToLower(ae.Description), "dnssec is not active")
 }
 
 // failoverNode is <failover record="id"> with every setting as an attribute
