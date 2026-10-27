@@ -61,8 +61,8 @@ Builds exist for Linux, macOS and Windows, on `amd64` and `arm64`.
 ### Linux and macOS
 
 ```bash
-$ curl -fsSL https://raw.githubusercontent.com/KrzysztofBogdan/gitfs/master/install-release.sh | bash
-$ gfs --version
+curl -fsSL https://raw.githubusercontent.com/KrzysztofBogdan/gitfs/master/install-release.sh | bash
+gfs --version
 ```
 
 This downloads the latest release for your system, checks it against the release's `checksums.txt` and installs `gfs` into `~/.local/bin` (override with `INSTALL_DIR`, e.g. `curl ... | INSTALL_DIR=~/bin bash`). Run it again to update.
@@ -70,9 +70,9 @@ This downloads the latest release for your system, checks it against the release
 To install by hand instead, pick the archive for your system: `linux_amd64`, `linux_arm64`, `darwin_amd64` (Intel Mac) or `darwin_arm64` (Apple silicon).
 
 ```bash
-$ curl -sL https://github.com/KrzysztofBogdan/gitfs/releases/latest/download/gfs_linux_amd64.tar.gz | tar xz gfs
-$ mkdir -p ~/.local/bin && mv gfs ~/.local/bin/
-$ gfs --version
+curl -sL https://github.com/KrzysztofBogdan/gitfs/releases/latest/download/gfs_linux_amd64.tar.gz | tar xz gfs
+mkdir -p ~/.local/bin && mv gfs ~/.local/bin/
+gfs --version
 ```
 
 `~/.local/bin` must be on your `PATH`; any other directory on it works too.
@@ -86,10 +86,10 @@ _**Linux:** tokens are kept through the Secret Service (GNOME Keyring, KWallet).
 In PowerShell (use `gfs_windows_arm64.zip` on ARM):
 
 ```powershell
-PS> Invoke-WebRequest https://github.com/KrzysztofBogdan/gitfs/releases/latest/download/gfs_windows_amd64.zip -OutFile gfs.zip
-PS> Expand-Archive gfs.zip -DestinationPath "$env:LOCALAPPDATA\gfs"
-PS> $p = [Environment]::GetEnvironmentVariable("Path", "User")
-PS> [Environment]::SetEnvironmentVariable("Path", "$p;$env:LOCALAPPDATA\gfs", "User")
+Invoke-WebRequest https://github.com/KrzysztofBogdan/gitfs/releases/latest/download/gfs_windows_amd64.zip -OutFile gfs.zip
+Expand-Archive gfs.zip -DestinationPath "$env:LOCALAPPDATA\gfs"
+$p = [Environment]::GetEnvironmentVariable("Path", "User")
+[Environment]::SetEnvironmentVariable("Path", "$p;$env:LOCALAPPDATA\gfs", "User")
 ```
 
 Open a new terminal and run `gfs --version`. SmartScreen may warn about the unsigned `gfs.exe` on first run.
@@ -99,7 +99,7 @@ Open a new terminal and run `gfs --version`. SmartScreen may warn about the unsi
 If you have [Go 1.25 or newer](https://go.dev/dl/):
 
 ```bash
-$ go install github.com/KrzysztofBogdan/gitfs/cmd/gfs@latest
+go install github.com/KrzysztofBogdan/gitfs/cmd/gfs@latest
 ```
 
 The binary lands in `$(go env GOPATH)/bin`.
@@ -116,21 +116,21 @@ Requirements:
 ### For development
 
 ```bash
-$ git clone https://github.com/KrzysztofBogdan/gitfs.git
-$ cd gitfs
-$ go build -o gfs ./cmd/gfs
+git clone https://github.com/KrzysztofBogdan/gitfs.git
+cd gitfs
+go build -o gfs ./cmd/gfs
 ```
 
 or build and install into `~/.local/bin` (override with `INSTALL_DIR`):
 
 ```bash
-$ ./install.sh
+./install.sh
 ```
 
 These builds report `gfs version dev`. Run the tests with:
 
 ```bash
-$ go test ./...
+go test ./...
 ```
 
 ### With version information
@@ -138,13 +138,13 @@ $ go test ./...
 The version is stamped at link time:
 
 ```bash
-$ go build -ldflags "-X github.com/KrzysztofBogdan/gitfs/internal/cli.Version=v0.1.1" -o gfs ./cmd/gfs
+go build -ldflags "-X github.com/KrzysztofBogdan/gitfs/internal/cli.Version=v0.1.1" -o gfs ./cmd/gfs
 ```
 
 To build every release archive locally, exactly as CI does, use [GoReleaser](https://goreleaser.com); the output goes to `dist/`:
 
 ```bash
-$ go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
 ```
 
 ### Releasing
@@ -152,7 +152,7 @@ $ go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
 Push a `v*` tag. The [release workflow](.github/workflows/release.yml) runs the tests, builds all archives with [`.goreleaser.yaml`](.goreleaser.yaml) and publishes a GitHub Release:
 
 ```bash
-$ git tag v0.2.0 && git push origin v0.2.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
 
@@ -161,14 +161,14 @@ $ git tag v0.2.0 && git push origin v0.2.0
 `gfs start` prints the overview of commands, files, policy and credentials; `gfs confluence` explains the Confluence layout.
 
 ```bash
-$ gfs auth set me@example.com --host acme.atlassian.net      # asks for the Atlassian API token, keeps it in the system keyring
-$ gfs clone confluence://acme.atlassian.net/ENG confluence   # the working tree remembers me@example.com
-$ cd confluence
-$ gfs get eng/Home/Runbooks.xml      # download a page's attachments into eng/Home/Runbooks.files/
-$ vim eng/Home/Architecture.xml
-$ gfs status
-$ gfs commit --dry-run
-$ gfs commit
+gfs auth set me@example.com --host acme.atlassian.net      # asks for the Atlassian API token, keeps it in the system keyring
+gfs clone confluence://acme.atlassian.net/ENG confluence   # the working tree remembers me@example.com
+cd confluence
+gfs get eng/Home/Runbooks.xml      # download a page's attachments into eng/Home/Runbooks.files/
+vim eng/Home/Architecture.xml
+gfs status
+gfs commit --dry-run
+gfs commit
 ```
 
 `gfs auth list` shows stored identities (tokens stored by `alogin` are used too), `gfs auth rm <email>` and
