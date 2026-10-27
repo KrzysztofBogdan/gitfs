@@ -60,7 +60,14 @@ Builds exist for Linux, macOS and Windows, on `amd64` and `arm64`.
 
 ### Linux and macOS
 
-Pick the archive for your system: `linux_amd64`, `linux_arm64`, `darwin_amd64` (Intel Mac) or `darwin_arm64` (Apple silicon).
+```bash
+$ curl -fsSL https://raw.githubusercontent.com/KrzysztofBogdan/gitfs/master/install-release.sh | bash
+$ gfs --version
+```
+
+This downloads the latest release for your system, checks it against the release's `checksums.txt` and installs `gfs` into `~/.local/bin` (override with `INSTALL_DIR`, e.g. `curl ... | INSTALL_DIR=~/bin bash`). Run it again to update.
+
+To install by hand instead, pick the archive for your system: `linux_amd64`, `linux_arm64`, `darwin_amd64` (Intel Mac) or `darwin_arm64` (Apple silicon).
 
 ```bash
 $ curl -sL https://github.com/KrzysztofBogdan/gitfs/releases/latest/download/gfs_linux_amd64.tar.gz | tar xz gfs
