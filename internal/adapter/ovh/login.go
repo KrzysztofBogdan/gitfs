@@ -121,7 +121,10 @@ func (*Adapter) Login(ctx context.Context, u *url.URL, io adapter.LoginIO) error
 	c = NewClient(base, cr)
 	for waited := time.Duration(0); ; waited += pollEvery {
 		var cur struct{ Status string }
-		if err := c.Do(ctx, http.MethodGet, "/auth/currentCredential", nil, &cur); err != nil {
+		// OVH answers 403 "This credential is not valid" until the key is approved: keep waiting.
+		var apiErr *APIError
+		err := c.Do(ctx, http.MethodGet, "/auth/currentCredential", nil, &cur)
+		if err != nil && !(errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden) {
 			return err
 		}
 		switch cur.Status {

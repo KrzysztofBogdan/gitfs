@@ -164,8 +164,12 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) bool {
 	case c == nil:
 		writeError(w, http.StatusForbidden, "Invalid credential")
 		return false
+	case r.URL.Path == "/1.0/auth/currentCredential" && c.Status == "pendingValidation":
+		// as the real API does: a key not approved yet cannot even read itself
+		writeError(w, http.StatusForbidden, "This credential is not valid")
+		return false
 	case r.URL.Path == "/1.0/auth/currentCredential":
-		return true // any known key may read itself, pending or not
+		return true // a known key that was approved, refused or expired may read itself
 	case c.Status != "validated":
 		writeError(w, http.StatusForbidden, "This credential is not valid")
 		return false
